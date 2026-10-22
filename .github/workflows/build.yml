@@ -25,13 +25,24 @@ jobs:
           gradle-version: "8.11.1"
 
       - name: Signing key
+        id: key
         env:
           KEYSTORE_B64: ${{ secrets.ATR_KEYSTORE_B64 }}
         run: |
-          if [ -z "$KEYSTORE_B64" ]; then echo "::error::Add the ATR_KEYSTORE_B64 secret"; exit 1; fi
-          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/atr-release.jks"
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::warning::No ATR_KEYSTORE_B64 secret yet. Compile check only, nothing gets published."
+            echo "signed=false" >> $GITHUB_OUTPUT
+          else
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/atr-release.jks"
+            echo "signed=true" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Compile check (no signing key yet)
+        if: steps.key.outputs.signed != 'true'
+        run: gradle --no-daemon assembleDebug
 
       - name: Build release APK
+        if: steps.key.outputs.signed == 'true'
         env:
           ATR_KEYSTORE: ${{ runner.temp }}/atr-release.jks
           ATR_KEYSTORE_PASS: ${{ secrets.ATR_KEYSTORE_PASS }}
@@ -53,11 +64,13 @@ jobs:
           JSON
 
       - uses: actions/upload-artifact@v4
+        if: steps.key.outputs.signed == 'true'
         with:
           name: atr-launcher-${{ env.VN }}
           path: out/
 
       - name: Publish release (the TV checks this for updates)
+        if: steps.key.outputs.signed == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.VN }}
