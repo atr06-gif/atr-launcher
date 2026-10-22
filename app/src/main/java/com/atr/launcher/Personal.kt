@@ -127,7 +127,7 @@ object CalendarFeed {
         return out
     }
 
-    private fun unescape(s: String) = s.replace("\\n", " ").replace("\\,", ",").replace("\;", ";").replace("\\\\", "\\")
+    private fun unescape(s: String) = s.replace("\\n", " ").replace("\\,", ",").replace("\\;", ";").replace("\\\\", "\\")
 }
 
 /** ATR Global rings, read live from the Ring Inputs table in Notion. */
