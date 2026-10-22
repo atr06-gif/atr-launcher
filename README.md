@@ -3,7 +3,9 @@
 A custom home screen for the apartment Fire TV, in the ATR colors (black, blue, white).
 
 ## How it works
-- **Home button**: Fire OS won't let another app be the default home, so the `ATR Home button` accessibility service watches for Amazon's home screen and brings ATR Launcher forward instead.
+- **Private side**: ATR Launcher opens from the app list behind a 4 digit PIN. It locks after `lockMinutes` without a button press and whenever the TV turns off. Roommates keep Amazon's normal home screen.
+- **Home button**: while unlocked, the `ATR Home button` accessibility service brings you back here when Home is pressed. While locked it does nothing.
+- **Private keys** (Notion key, calendar link) never go in this repo. They live in `my_keys.json` on the PC and are sent to the TV with `6 - Send my keys to TV.bat`.
 - **Look and layout**: everything comes from `config/config.json`: colors, which cards show, rows, favorites, hidden apps. Edit it, bump `"version"`, push, and the TV picks it up within 30 minutes (or ATR Settings > Pull latest look).
 - **App updates**: every push to `main` builds a signed APK and publishes a GitHub release with `version.json`. The TV checks every 6 hours and shows an "Update ready" pill. One click installs it.
 
@@ -23,3 +25,6 @@ A custom home screen for the apartment Fire TV, in the ATR colors (black, blue, 
 | `HomeWatcherService.kt` | Sends the Home button here |
 | `Updater.kt` | Update check, download, install; remote config pull |
 | `SettingsActivity.kt` | ATR Settings screen |
+| `Lock.kt` | PIN lock and on screen PIN pad |
+| `Secrets.kt` | Private keys stored on the TV only |
+| `Personal.kt` | Google Calendar (Next up) and Notion (ATR Global rings) |

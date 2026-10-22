@@ -12,22 +12,60 @@
     "logo": "#05070B"
   },
   "clock24h": false,
-  "cards": ["race", "aggies", "weather"],
-  "cardActions": { "race": "com.formulaone.production", "aggies": "com.espn.gtv" },
-  "weather": { "label": "College Station", "lat": 30.628, "lon": -96.3344 },
+  "cards": [
+    "race",
+    "class",
+    "atr"
+  ],
+  "cardActions": {
+    "race": "com.formulaone.production",
+    "aggies": "com.espn.gtv"
+  },
+  "weather": {
+    "label": "College Station",
+    "lat": 30.628,
+    "lon": -96.3344
+  },
   "extraEvents": [],
   "rows": [
-    { "title": "Favorites", "type": "pinned" },
-    { "title": "Inputs", "type": "inputs" },
-    { "title": "All apps", "type": "all" },
-    { "title": "System", "type": "system" }
+    {
+      "title": "My apps",
+      "type": "pinned"
+    },
+    {
+      "title": "Racing hub",
+      "type": "racing"
+    },
+    {
+      "title": "Inputs",
+      "type": "inputs"
+    },
+    {
+      "title": "All apps",
+      "type": "all"
+    },
+    {
+      "title": "System",
+      "type": "system"
+    }
   ],
   "pinned": [
-    "com.netflix.ninja", "com.formulaone.production", "com.espn.gtv", "com.amazon.firebat",
-    "com.amazon.firetv.youtube", "com.hulu.plus", "com.disney.disneyplus", "com.hbo.hbonow",
-    "com.peacock.peacockfiretv", "com.spotify.tv.android"
+    "com.formulaone.production",
+    "com.espn.gtv",
+    "com.amazon.firetv.youtube",
+    "com.netflix.ninja",
+    "com.amazon.firebat",
+    "com.spotify.tv.android",
+    "com.hbo.hbonow",
+    "com.peacock.peacockfiretv"
   ],
-  "hidden": ["com.spocky.projengmenu", "com.amazon.avod", "com.amazon.spiderpork", "com.amazon.shoptv.firetv.client"],
+  "hidden": [
+    "com.spocky.projengmenu",
+    "com.amazon.avod",
+    "com.amazon.spiderpork",
+    "com.amazon.shoptv.firetv.client"
+  ],
   "configUrl": "",
-  "updateUrl": ""
+  "updateUrl": "",
+  "lockMinutes": 10
 }

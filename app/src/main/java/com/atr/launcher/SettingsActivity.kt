@@ -48,9 +48,23 @@ class SettingsActivity : Activity() {
             App.bg({ RemoteConfig.pull(this) }) { changed -> toast(if (changed) "Updated. Press Home to see it." else "Already up to date") }
         }
 
+        section("Lock")
+        info("Locks after ${Config.lockMinutes} minutes without a button press, and whenever the TV turns off.")
+        button("Lock now") { Lock.lockNow(); finishAffinity() }
+        button("Change PIN") {
+            getSharedPreferences("atr_lock", MODE_PRIVATE).edit().clear().apply()
+            Lock.lockNow(); toast("Open ATR Launcher to set a new PIN"); finishAffinity()
+        }
+
+        section("Your keys")
+        info("Notion (ATR Global rings): " + if (Secrets.has(this, Secrets.NOTION_TOKEN)) "linked" else "not linked")
+        info("Google Calendar (Next up card): " + if (Secrets.has(this, Secrets.CALENDAR_ICS)) "linked" else "not linked")
+        info("To change these, edit my_keys.json on your PC and run 6 - Send my keys to TV.bat.")
+        button("Forget my keys on this TV") { Secrets.clear(this); toast("Keys removed"); build() }
+
         section("Home button")
         val on = (Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: "").contains(packageName)
-        info(if (on) "Home button opens ATR Launcher: ON" else "Home button opens ATR Launcher: OFF. Turn on \"ATR Home button\" in Accessibility.")
+        info(if (on) "While unlocked, Home brings you back here. When locked, Home goes to Amazon for everyone else." else "Home button helper is OFF. Turn on \"ATR Home button\" in Accessibility.")
         if (!on) button("Open Accessibility settings") { runCatching { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) } }
 
         section("Hidden apps")

@@ -10,6 +10,10 @@ class App : Application() {
         super.onCreate()
         instance = this
         Config.load(this)
+        // TV going to standby locks the ATR side
+        registerReceiver(object : android.content.BroadcastReceiver() {
+            override fun onReceive(c: android.content.Context, i: android.content.Intent) { Lock.lockNow() }
+        }, android.content.IntentFilter(android.content.Intent.ACTION_SCREEN_OFF))
     }
 
     companion object {

@@ -68,6 +68,7 @@ class BackgroundView(ctx: Context) : View(ctx) {
 @SuppressLint("ViewConstructor")
 class TileView(ctx: Context, val label: String, private val banner: Drawable?, private val icon: Drawable?, private val glyph: String? = null) : View(ctx) {
     var theme: Theme = Config.theme
+    var glyphSize = 64f
     private val radius = U.pxf(16)
     private val path = Path()
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -83,7 +84,7 @@ class TileView(ctx: Context, val label: String, private val banner: Drawable?, p
         when {
             banner != null -> { banner.setBounds(0, 0, w.toInt(), h.toInt()); banner.draw(c) }
             glyph != null -> {
-                tp.color = theme.accent; tp.typeface = U.bold; tp.textSize = U.pxf(64)
+                tp.color = theme.accent; tp.typeface = U.bold; tp.textSize = U.pxf(glyphSize)
                 c.drawText(glyph, w / 2, h * 0.52f, tp)
                 tp.color = theme.cardText; tp.typeface = U.medium; tp.textSize = U.pxf(26)
                 c.drawText(label, w / 2, h * 0.82f, tp)
@@ -176,5 +177,69 @@ class InfoCard(ctx: Context, label: String, private val theme: Theme) : LinearLa
     fun set(b: String, l1: String = "", l2: String = "", l3: String = "") {
         big.text = b; line1.text = l1; line2.text = l2; line3.text = l3
         line3.visibility = if (l3.isBlank()) View.GONE else View.VISIBLE
+    }
+}
+
+/** ATR Global card: one progress ring per Ring Inputs row, in that row's color. */
+class RingsCard(ctx: Context, private val theme: Theme) : LinearLayout(ctx) {
+    private val rings = RingsView(ctx, theme)
+    private val status = U.text(ctx, 22, theme.cardMuted)
+
+    init {
+        orientation = VERTICAL
+        setPadding(U.px(30), U.px(28), U.px(30), U.px(26))
+        val r = U.pxf(22)
+        val strip = GradientDrawable().apply { cornerRadius = r; setColor(theme.accent) }
+        val body = GradientDrawable().apply { cornerRadius = r; setColor(theme.card) }
+        background = LayerDrawable(arrayOf(strip, body)).apply { setLayerInset(1, 0, 0, 0, U.px(10)) }
+        val head = LinearLayout(ctx).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        head.addView(View(ctx).apply { setBackgroundColor(theme.accent) }, U.lp(U.px(6), U.px(28), 0, 0, U.px(12), 0))
+        head.addView(U.text(ctx, 24, theme.accent, U.bold, "ATR GLOBAL").apply { letterSpacing = 0.12f })
+        addView(head)
+        addView(status, U.lp(U.WRAP, U.WRAP, 0, U.px(10), 0, 0))
+        addView(rings, LayoutParams(U.MATCH, 0, 1f).apply { topMargin = U.px(6) })
+        isFocusable = true; isClickable = true
+        U.focusGrow(this, 1.03f) { has -> (body).setStroke(if (has) U.px(4) else 0, theme.accent) }
+    }
+
+    fun set(list: List<Ring>, message: String = "") {
+        rings.list = list
+        status.text = message
+        status.visibility = if (message.isBlank()) View.GONE else View.VISIBLE
+    }
+}
+
+class RingsView(ctx: Context, private val theme: Theme) : View(ctx) {
+    var list: List<Ring> = emptyList(); set(v) { field = v.take(8); invalidate() }
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
+    private val arc = RectF()
+
+    override fun onDraw(c: Canvas) {
+        if (list.isEmpty()) return
+        val cols = minOf(4, list.size); val rows = (list.size + cols - 1) / cols
+        val cw = width.toFloat() / cols; val ch = height.toFloat() / rows
+        val label = U.pxf(17); val d = minOf(cw * 0.66f, ch - label * 2.6f).coerceAtLeast(U.pxf(30))
+        val stroke = d * 0.12f
+        list.forEachIndexed { i, r ->
+            val cx = cw * (i % cols) + cw / 2; val top = ch * (i / cols) + U.pxf(2)
+            arc.set(cx - d / 2 + stroke / 2, top + stroke / 2, cx + d / 2 - stroke / 2, top + d - stroke / 2)
+            p.style = Paint.Style.STROKE; p.strokeWidth = stroke; p.strokeCap = Paint.Cap.ROUND
+            p.color = Color.argb(48, Color.red(theme.cardText), Color.green(theme.cardText), Color.blue(theme.cardText))
+            c.drawArc(arc, 0f, 360f, false, p)
+            val frac = if (r.goal > 0) (r.current / r.goal).coerceIn(0.0, 1.0).toFloat() else 0f
+            p.color = r.color
+            if (frac > 0f) c.drawArc(arc, -90f, 360f * frac, false, p)
+            p.style = Paint.Style.FILL
+            tp.color = theme.cardText; tp.typeface = U.bold; tp.textSize = d * 0.28f
+            c.drawText("${Math.round(frac * 100)}%", cx, top + d / 2 + tp.textSize * 0.36f, tp)
+            tp.color = theme.cardMuted; tp.typeface = U.medium; tp.textSize = label
+            c.drawText(fit(r.metric, cw - U.pxf(10)), cx, top + d + label * 1.25f, tp)
+        }
+    }
+
+    private fun fit(s: String, max: Float): String {
+        if (tp.measureText(s) <= max) return s
+        var t = s; while (t.length > 1 && tp.measureText("$t…") > max) t = t.dropLast(1); return "$t…"
     }
 }

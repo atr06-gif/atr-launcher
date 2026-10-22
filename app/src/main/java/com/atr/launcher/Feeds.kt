@@ -60,7 +60,38 @@ class Feeds(ctx: Context) {
                 if (t.isAfter(now.minusHours(2))) out += RaceItem(if (e.name.contains("IMSA", true)) "IMSA" else "", e.name, "", t)
             }
         }
-        return out.sortedBy { it.start }.take(limit)
+        return out.sortedBy { it.start.toEpochSecond() }.take(limit)
+    }
+
+    /** Every session of the next F1 weekend (FP1 to Race), for the Racing hub row. */
+    fun weekend(): List<RaceItem> {
+        val next = races(1).firstOrNull { it.series == "F1" } ?: return emptyList()
+        val body = get("https://api.jolpi.ca/ergast/f1/current/races.json?limit=40", 6 * 60) ?: return emptyList()
+        val races = runCatching { JSONObject(body).getJSONObject("MRData").getJSONObject("RaceTable").getJSONArray("Races") }.getOrNull() ?: return emptyList()
+        for (i in 0 until races.length()) {
+            val r = races.getJSONObject(i)
+            if (r.optString("raceName").replace(" Grand Prix", " GP") != next.event) continue
+            val keys = listOf("FirstPractice" to "FP1", "SecondPractice" to "FP2", "ThirdPractice" to "FP3",
+                "SprintQualifying" to "Sprint Quali", "SprintShootout" to "Sprint Quali", "Sprint" to "Sprint", "Qualifying" to "Quali")
+            val list = keys.mapNotNull { (k, label) -> r.optJSONObject(k)?.let { s -> parse(s.optString("date"), s.optString("time"))?.let { RaceItem("F1", next.event, label, it) } } } +
+                listOfNotNull(parse(r.optString("date"), r.optString("time"))?.let { RaceItem("F1", next.event, "Race", it) })
+            return list.sortedBy { it.start.toEpochSecond() }
+        }
+        return emptyList()
+    }
+
+    data class Standing(val pos: Int, val code: String, val name: String, val team: String, val points: String)
+
+    fun driverStandings(top: Int = 5): List<Standing> {
+        val body = get("https://api.jolpi.ca/ergast/f1/current/driverStandings.json", 6 * 60) ?: return emptyList()
+        val list = runCatching {
+            JSONObject(body).getJSONObject("MRData").getJSONObject("StandingsTable").getJSONArray("StandingsLists").getJSONObject(0).getJSONArray("DriverStandings")
+        }.getOrNull() ?: return emptyList()
+        return (0 until minOf(top, list.length())).map { i ->
+            val d = list.getJSONObject(i); val drv = d.getJSONObject("Driver")
+            Standing(d.optInt("position", i + 1), drv.optString("code", drv.optString("familyName").take(3).uppercase()),
+                drv.optString("familyName"), d.optJSONArray("Constructors")?.optJSONObject(0)?.optString("name") ?: "", d.optString("points"))
+        }
     }
 
     private fun parse(date: String, time: String): ZonedDateTime? = runCatching {

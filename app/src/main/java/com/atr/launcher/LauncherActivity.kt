@@ -39,6 +39,10 @@ class LauncherActivity : Activity() {
     private lateinit var updatePill: TextView
     private lateinit var logo: ImageView
     private val cards = LinkedHashMap<String, InfoCard>()
+    private var ringsCard: RingsCard? = null
+    private lateinit var rootFrame: FrameLayout
+    private lateinit var weatherLine: TextView
+    private var lockView: PinView? = null
     private var th = Config.theme
     private var pendingUpdate: Updater.Info? = null
     private var lastFeeds = 0L
@@ -48,6 +52,7 @@ class LauncherActivity : Activity() {
     private val tick = object : Runnable {
         override fun run() {
             updateClock()
+            if (!Lock.isUnlocked && lockView == null) showLock()
             val now = System.currentTimeMillis()
             if (now - lastFeeds > 10 * 60_000) refreshCards()
             if (now - lastRemote > 30 * 60_000) checkRemoteConfig()
@@ -75,6 +80,8 @@ class LauncherActivity : Activity() {
     override fun onResume() {
         super.onResume()
         HomeState.allowAmazonUntil = 0L
+        App.bg({ Secrets.importIfPresent(this) }) { imported -> if (imported) { toast("Your keys were loaded"); refreshCards(force = true) } }
+        if (!Lock.isUnlocked) showLock() else hideLock()
         App.main.removeCallbacks(tick); App.main.post(tick)
         // Coming back home always lands on the top of the screen
         if (::content.isInitialized) (content.parent as? ScrollView)?.scrollTo(0, 0)
@@ -84,13 +91,35 @@ class LauncherActivity : Activity() {
     override fun onPause() { App.main.removeCallbacks(tick); super.onPause() }
 
     @Deprecated("Deprecated in Java")
-    override fun onBackPressed() { /* Home is the bottom of the stack. Back does nothing here. */ }
+    override fun onBackPressed() {
+        // On the PIN screen Back leaves the app. Once unlocked, use the Lock tile to leave.
+        if (lockView != null) finish()
+    }
+
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean { Lock.touch(); return super.dispatchKeyEvent(event) }
+
+    private fun showLock() {
+        if (lockView != null) return
+        val creating = !Lock.hasPin(this)
+        val v = PinView(this, th, creating) { hideLock(); refreshCards(force = true); focusFirstTile() }
+        lockView = v
+        // Nothing behind the PIN pad can take focus while locked
+        (content.parent as? ScrollView)?.descendantFocusability = android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
+        rootFrame.addView(v, FrameLayout.LayoutParams(U.MATCH, U.MATCH))
+    }
+
+    private fun hideLock() {
+        lockView?.let { rootFrame.removeView(it) }; lockView = null
+        (content.parent as? ScrollView)?.descendantFocusability = android.view.ViewGroup.FOCUS_AFTER_DESCENDANTS
+    }
 
     // ------------------------------------------------------------------ layout
 
     private fun buildScreen() {
         th = Config.theme
+        lockView = null
         val root = FrameLayout(this)
+        rootFrame = root
         bg = BackgroundView(this).apply { theme = this@LauncherActivity.th }
         root.addView(bg, FrameLayout.LayoutParams(U.MATCH, U.MATCH))
 
@@ -102,16 +131,22 @@ class LauncherActivity : Activity() {
         content.addView(header(), U.lp(U.MATCH, U.px(150)))
 
         val cardRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; clipChildren = false }
-        cards.clear()
+        cards.clear(); ringsCard = null
         Config.cards.forEachIndexed { i, key ->
-            val title = when (key) { "race" -> "Race weekend"; "aggies" -> "Aggie football"; "weather" -> Config.weatherLabel; else -> key }
+            val lp = LinearLayout.LayoutParams(0, U.px(300), if (key == "atr") 1.5f else 1f).apply { if (i > 0) leftMargin = U.px(28) }
+            if (key == "atr") {
+                val rc = RingsCard(this, th)
+                rc.setOnClickListener { refreshCards(force = true) }
+                ringsCard = rc; cardRow.addView(rc, lp); return@forEachIndexed
+            }
+            val title = when (key) { "race" -> "Race weekend"; "class" -> "Next up"; "aggies" -> "Aggie football"; "weather" -> Config.weatherLabel; else -> key }
             val card = InfoCard(this, title, th)
             card.setOnClickListener { Config.cardAction(key)?.let { pkg -> if (!AppRepo.launch(this, pkg)) toast("That app isn't installed") } }
             card.set("…")
             cards[key] = card
-            cardRow.addView(card, LinearLayout.LayoutParams(0, U.px(300), 1f).apply { if (i > 0) leftMargin = U.px(28) })
+            cardRow.addView(card, lp)
         }
-        if (cards.isNotEmpty()) content.addView(cardRow, U.lp(U.MATCH, U.WRAP, U.px(64), U.px(10), U.px(64), U.px(10)))
+        if (cards.isNotEmpty() || ringsCard != null) content.addView(cardRow, U.lp(U.MATCH, U.WRAP, U.px(64), U.px(10), U.px(64), U.px(10)))
 
         rowsBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; clipChildren = false; clipToPadding = false }
         content.addView(rowsBox, U.lp(U.MATCH, U.WRAP))
@@ -120,6 +155,7 @@ class LauncherActivity : Activity() {
         buildRows()
         updateClock()
         refreshCards()
+        if (!Lock.isUnlocked) showLock()
     }
 
     private fun header(): View {
@@ -142,7 +178,9 @@ class LauncherActivity : Activity() {
         val clockCol = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.END }
         clock = U.text(this, 52, th.ink, U.bold)
         date = U.text(this, 22, th.inkMuted, U.medium)
+        weatherLine = U.text(this, 22, th.inkMuted, U.medium)
         clockCol.addView(clock); clockCol.addView(date, U.lp(U.WRAP, U.WRAP, 0, U.px(4), 0, 0))
+        clockCol.addView(weatherLine, U.lp(U.WRAP, U.WRAP, 0, U.px(4), 0, 0))
         right.addView(clockCol)
         h.addView(right, FrameLayout.LayoutParams(U.WRAP, U.WRAP, Gravity.END or Gravity.TOP).apply { rightMargin = U.px(64); topMargin = U.px(40) })
         return h
@@ -165,8 +203,9 @@ class LauncherActivity : Activity() {
                         row.add(t)
                     }
                     "system" -> systemTiles().forEach { row.add(it) }
+                    "racing" -> racingTiles(row)
                 }
-                if (row.count > 0) rowsBox.addView(row, U.lp(U.MATCH, U.WRAP))
+                if (row.count > 0 || spec.type == "racing") rowsBox.addView(row, U.lp(U.MATCH, U.WRAP))
             }
             if (currentFocus == null || currentFocus !is TileView) focusFirstTile()
         }
@@ -194,8 +233,29 @@ class LauncherActivity : Activity() {
                     startActivity(Intent().setClassName("com.amazon.tv.launcher", "com.amazon.tv.launcher.ui.HomeActivity_vNext").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                 } }
             },
+            tile("Lock and exit", "LOCK") { Lock.lockNow(); finish() },
             tile("Refresh", "↻") { checkRemoteConfig(force = true); refreshCards(force = true); buildRows(); toast("Refreshing") }
         )
+    }
+
+    private fun racingTiles(row: RowView) {
+        val feeds = Feeds(this)
+        App.bg({ feeds.weekend() to feeds.driverStandings(5) }) { (sessions, standings) ->
+            val now = ZonedDateTime.now(java.time.ZoneId.of("America/Chicago"))
+            sessions.forEach { s ->
+                val done = s.start.isBefore(now.minusHours(2))
+                val t = TileView(this, "${s.event} · ${s.start.format(short)}${if (done) " · done" else " · in " + countdown(s.start)}", null, null, s.session)
+                    .apply { theme = this@LauncherActivity.th; glyphSize = if (s.session.length > 6) 38f else 56f; alpha = if (done) 0.55f else 1f }
+                t.setOnClickListener { AppRepo.launch(this, "com.formulaone.production") }
+                row.add(t)
+            }
+            standings.forEach { d ->
+                val t = TileView(this, "${d.name} · ${d.team} · ${d.points} pts", null, null, "P${d.pos} ${d.code}")
+                    .apply { theme = this@LauncherActivity.th; glyphSize = 44f }
+                t.setOnClickListener { AppRepo.launch(this, "com.formulaone.production") }
+                row.add(t)
+            }
+        }
     }
 
     private fun appMenu(a: AppEntry, pinned: Boolean) {
@@ -250,6 +310,35 @@ class LauncherActivity : Activity() {
                     "Kickoff in ${countdown(next.start)}" + if (next.tv.isNotBlank()) " · ${next.tv}" else "",
                     last?.let { "Last: $it" } ?: "")
             }
+        }
+        cards["class"]?.let { card ->
+            App.bg({ CalendarFeed.upcoming(this, feeds) to Secrets.has(this, Secrets.CALENDAR_ICS) }) { (events, linked) ->
+                val now = ZonedDateTime.now(java.time.ZoneId.of("America/Chicago"))
+                val next = events.firstOrNull { it.end.isAfter(now) }
+                when {
+                    !linked -> card.set("Link calendar", "Run 6 - Send my keys to TV.bat", "on your PC")
+                    next == null -> card.set("Free", "Nothing on the calendar", "for the next two weeks")
+                    else -> {
+                        val live = next.start.isBefore(now)
+                        val then = events.firstOrNull { it.start.isAfter(next.start) }
+                        card.set(if (live) "NOW" else countdown(next.start), next.title,
+                            next.start.format(long) + if (next.location.isNotBlank()) " · ${next.location}" else "",
+                            then?.let { "Then: ${it.title} ${it.start.format(short)}" } ?: "")
+                    }
+                }
+            }
+        }
+        ringsCard?.let { rc ->
+            App.bg({ NotionFeed.rings(this) to Secrets.has(this, Secrets.NOTION_TOKEN) }) { (rings, linked) ->
+                when {
+                    !linked -> rc.set(emptyList(), "Link Notion: run 6 - Send my keys to TV.bat")
+                    rings.isEmpty() -> rc.set(emptyList(), "Couldn't reach Notion. Showing nothing yet.")
+                    else -> rc.set(rings)
+                }
+            }
+        }
+        App.bg({ feeds.weather() ?: Weather(-999, 0, 0, 0, -1) }) { w ->
+            weatherLine.text = if (w.nowF == -999) "" else "${w.nowF}° ${Feeds.describe(w.code)} · ${Config.weatherLabel}"
         }
         cards["weather"]?.let { card ->
             App.bg({ feeds.weather() ?: Weather(-999, 0, 0, 0, -1) }) { w ->

@@ -50,6 +50,7 @@ object Config {
     val version get() = json.optInt("version", 1)
     val theme get() = Theme.from(json.optJSONObject("theme"))
     val clock24h get() = json.optBoolean("clock24h", false)
+    val lockMinutes get() = json.optInt("lockMinutes", 10).coerceIn(1, 240)
     val cards: List<String> get() = json.optJSONArray("cards").strings()
     fun cardAction(card: String): String? = json.optJSONObject("cardActions")?.optString(card)?.takeIf { it.isNotBlank() }
     val weatherLabel get() = json.optJSONObject("weather")?.optString("label") ?: "Weather"
