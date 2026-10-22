@@ -4,3 +4,10 @@ local.properties
 *.jks
 *.keystore
 .idea/
+# Private files that must never be published
+my_keys.json
+secrets.json
+*.b64
+passwords.txt
+*.ics
+local.properties
