@@ -1,5 +1,5 @@
 {
-  "version": 1,
+  "version": 2,
   "theme": {
     "page": "#F4F6FA",
     "pageLow": "#E3EAF6",
@@ -50,9 +50,11 @@
     }
   ],
   "pinned": [
+    "com.amazon.firetv.youtube",
+    "com.apple.atve.amazon.appletv",
+    "com.apple.airplay.amazon.airplay",
     "com.formulaone.production",
     "com.espn.gtv",
-    "com.amazon.firetv.youtube",
     "com.netflix.ninja",
     "com.amazon.firebat",
     "com.spotify.tv.android",
