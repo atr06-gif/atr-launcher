@@ -79,8 +79,9 @@ class PinView(ctx: Context, private val th: Theme, private val creating: Boolean
         keys.forEach { k -> grid.addView(key(ctx, k), GridLayout.LayoutParams().apply {
             width = U.px(150); height = U.px(110); setMargins(U.px(10), U.px(10), U.px(10), U.px(10))
         }) }
-        col.addView(grid)
-        addView(col, LayoutParams(U.WRAP, U.WRAP, Gravity.CENTER))
+        // Fixed size so the parent can't squeeze the keypad: 3 keys of 150 plus 10 margin each side, 4 rows of 110
+        col.addView(grid, LinearLayout.LayoutParams(U.px(3 * 170), U.px(4 * 130)))
+        addView(col, LayoutParams(U.MATCH, U.WRAP, Gravity.CENTER))
         title.text = if (creating) "Create your ATR PIN" else "Enter PIN"
         msg.text = if (creating) "4 digits. Only you can open this side." else " "
         drawDots()
