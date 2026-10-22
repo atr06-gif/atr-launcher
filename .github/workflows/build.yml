@@ -31,7 +31,7 @@ jobs:
       - name: Signing key
         id: key
         env:
-          KEYSTORE_B64: ${{ secrets.ATR_KEYSTORE_B64 }}
+          KEYSTORE_B64: ${{ secrets.ATR_KEYSTORE_B64 || secrets.ATR_KEYSTONE_B64 }}
         run: |
           if [ -z "$KEYSTORE_B64" ]; then
             echo "::warning::No ATR_KEYSTORE_B64 secret yet. Compile check only, nothing gets published."
@@ -55,7 +55,7 @@ jobs:
         if: steps.key.outputs.signed == 'true'
         env:
           ATR_KEYSTORE: ${{ runner.temp }}/atr-release.jks
-          ATR_KEYSTORE_PASS: ${{ secrets.ATR_KEYSTORE_PASS }}
+          ATR_KEYSTORE_PASS: ${{ secrets.ATR_KEYSTORE_PASS || secrets.ATR_KEYSTONE_PASS }}
           ATR_KEY_PASS: ${{ secrets.ATR_KEY_PASS }}
         run: |
           VC=$((100 + ${{ github.run_number }}))
