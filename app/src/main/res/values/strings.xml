@@ -1,0 +1,5 @@
+<resources>
+    <string name="app_name">ATR Launcher</string>
+    <string name="watcher_name">ATR Home button</string>
+    <string name="watcher_desc">Sends the Home button to the ATR Launcher instead of the Amazon home screen.</string>
+</resources>

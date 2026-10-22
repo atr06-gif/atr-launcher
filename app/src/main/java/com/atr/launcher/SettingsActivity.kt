@@ -1,0 +1,96 @@
+package com.atr.launcher
+
+import android.app.Activity
+import android.content.Intent
+import android.os.Bundle
+import android.provider.Settings
+import android.view.View
+import android.widget.FrameLayout
+import android.widget.LinearLayout
+import android.widget.ScrollView
+import android.widget.TextView
+import android.widget.Toast
+import java.io.File
+
+/** ATR Settings: updates, config, hidden apps, Home button status. Built in code, same look as home. */
+class SettingsActivity : Activity() {
+    private lateinit var list: LinearLayout
+    private val th get() = Config.theme
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        U.init(this)
+        val root = FrameLayout(this)
+        root.addView(BackgroundView(this), FrameLayout.LayoutParams(U.MATCH, U.MATCH))
+        val scroll = ScrollView(this).apply { isVerticalScrollBarEnabled = false }
+        list = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setPadding(U.px(160), U.px(70), U.px(160), U.px(80)) }
+        scroll.addView(list); root.addView(scroll)
+        setContentView(root)
+        build()
+    }
+
+    override fun onResume() { super.onResume(); if (::list.isInitialized) build() }
+
+    private fun build() {
+        list.removeAllViews()
+        list.addView(U.text(this, 56, th.ink, U.bold, "ATR Settings"))
+        list.addView(U.text(this, 24, th.inkMuted, U.medium, "Version ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})"), U.lp(U.WRAP, U.WRAP, 0, U.px(8), 0, U.px(30)))
+
+        section("Updates")
+        button("Check for updates now") {
+            toast("Checking…")
+            App.bg({ Updater.check() ?: Updater.NONE }) { info ->
+                if (info === Updater.NONE) toast("You're on the latest version")
+                else App.bg({ Updater.download(this, info) ?: File("") }) { f -> if (f.exists()) Updater.install(this, f) else toast("Download failed") }
+            }
+        }
+        button("Pull latest look and layout from the internet") {
+            App.bg({ RemoteConfig.pull(this) }) { changed -> toast(if (changed) "Updated. Press Home to see it." else "Already up to date") }
+        }
+
+        section("Home button")
+        val on = (Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: "").contains(packageName)
+        info(if (on) "Home button opens ATR Launcher: ON" else "Home button opens ATR Launcher: OFF. Turn on \"ATR Home button\" in Accessibility.")
+        if (!on) button("Open Accessibility settings") { runCatching { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) } }
+
+        section("Hidden apps")
+        val hidden = Config.hidden
+        if (hidden.isEmpty()) info("Nothing hidden")
+        hidden.forEach { pkg ->
+            val label = runCatching { packageManager.getApplicationLabel(packageManager.getApplicationInfo(pkg, 0)).toString() }.getOrDefault(pkg)
+            button("Show $label again") { Config.unhide(pkg); build() }
+        }
+
+        section("Reset")
+        button("Reset layout to default") {
+            File(filesDir, "config.json").delete(); Config.load(this); toast("Reset. Press Home.")
+        }
+        button("Open Fire TV settings") { runCatching { startActivity(Intent(Settings.ACTION_SETTINGS)) } }
+
+        list.getChildAt(2)?.let { list.post { findFirstButton()?.requestFocus() } }
+    }
+
+    private fun findFirstButton(): View? = (0 until list.childCount).map { list.getChildAt(it) }.firstOrNull { it.isFocusable }
+
+    private fun section(t: String) = list.addView(U.text(this, 30, th.ink, U.bold, t), U.lp(U.WRAP, U.WRAP, 0, U.px(34), 0, U.px(12)))
+    private fun info(t: String) = list.addView(U.text(this, 24, th.inkMuted, U.regular, t).apply { maxLines = 3 }, U.lp(U.MATCH, U.WRAP, 0, 0, 0, U.px(10)))
+
+    private fun button(t: String, go: () -> Unit) {
+        val b = TextView(this).apply {
+            text = t; setTextColor(th.cardText); typeface = U.medium
+            setTextSize(android.util.TypedValue.COMPLEX_UNIT_PX, U.pxf(28))
+            setPadding(U.px(32), U.px(22), U.px(32), U.px(22))
+            isFocusable = true; isClickable = true
+            val bgd = android.graphics.drawable.GradientDrawable().apply { cornerRadius = U.pxf(16); setColor(th.card) }
+            background = bgd
+            setOnClickListener { go() }
+            setOnFocusChangeListener { v, has ->
+                bgd.setStroke(if (has) U.px(4) else 0, th.accent)
+                v.animate().scaleX(if (has) 1.02f else 1f).scaleY(if (has) 1.02f else 1f).setDuration(120).start()
+            }
+        }
+        list.addView(b, U.lp(U.MATCH, U.WRAP, 0, U.px(8), 0, U.px(8)))
+    }
+
+    private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_SHORT).show()
+}

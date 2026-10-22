@@ -1,0 +1,68 @@
+name: Build ATR Launcher
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["config/**", "README.md"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.11.1"
+
+      - name: Signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.ATR_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then echo "::error::Add the ATR_KEYSTORE_B64 secret"; exit 1; fi
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/atr-release.jks"
+
+      - name: Build release APK
+        env:
+          ATR_KEYSTORE: ${{ runner.temp }}/atr-release.jks
+          ATR_KEYSTORE_PASS: ${{ secrets.ATR_KEYSTORE_PASS }}
+          ATR_KEY_PASS: ${{ secrets.ATR_KEY_PASS }}
+        run: |
+          VC=$((100 + ${{ github.run_number }}))
+          VN="1.0.${{ github.run_number }}"
+          echo "VC=$VC" >> $GITHUB_ENV; echo "VN=$VN" >> $GITHUB_ENV
+          gradle --no-daemon assembleRelease \
+            -PversionCode=$VC -PversionName=$VN \
+            -PupdateUrl=https://github.com/${{ github.repository }}/releases/latest/download/version.json \
+            -PconfigUrl=https://raw.githubusercontent.com/${{ github.repository }}/main/config/config.json
+          mkdir -p out
+          cp app/build/outputs/apk/release/app-release.apk out/atr-launcher.apk
+          cat > out/version.json <<JSON
+          {"versionCode": $VC, "versionName": "$VN",
+           "apk": "https://github.com/${{ github.repository }}/releases/download/v$VN/atr-launcher.apk",
+           "notes": "Build $VN"}
+          JSON
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: atr-launcher-${{ env.VN }}
+          path: out/
+
+      - name: Publish release (the TV checks this for updates)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VN }}
+          name: ATR Launcher ${{ env.VN }}
+          make_latest: "true"
+          files: |
+            out/atr-launcher.apk
+            out/version.json

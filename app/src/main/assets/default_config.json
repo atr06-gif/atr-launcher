@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "theme": {
+    "page": "#F4F6FA",
+    "pageLow": "#E3EAF6",
+    "ink": "#05070B",
+    "inkMuted": "#4B5568",
+    "card": "#05070B",
+    "cardText": "#FFFFFF",
+    "cardMuted": "#9AA6BD",
+    "accent": "#1E6BFF",
+    "logo": "#05070B"
+  },
+  "clock24h": false,
+  "cards": ["race", "aggies", "weather"],
+  "cardActions": { "race": "com.formulaone.production", "aggies": "com.espn.gtv" },
+  "weather": { "label": "College Station", "lat": 30.628, "lon": -96.3344 },
+  "extraEvents": [],
+  "rows": [
+    { "title": "Favorites", "type": "pinned" },
+    { "title": "Inputs", "type": "inputs" },
+    { "title": "All apps", "type": "all" },
+    { "title": "System", "type": "system" }
+  ],
+  "pinned": [
+    "com.netflix.ninja", "com.formulaone.production", "com.espn.gtv", "com.amazon.firebat",
+    "com.amazon.firetv.youtube", "com.hulu.plus", "com.disney.disneyplus", "com.hbo.hbonow",
+    "com.peacock.peacockfiretv", "com.spotify.tv.android"
+  ],
+  "hidden": ["com.spocky.projengmenu", "com.amazon.avod", "com.amazon.spiderpork", "com.amazon.shoptv.firetv.client"],
+  "configUrl": "",
+  "updateUrl": ""
+}
