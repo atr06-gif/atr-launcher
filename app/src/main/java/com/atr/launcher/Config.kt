@@ -52,6 +52,8 @@ object Config {
     val clock24h get() = json.optBoolean("clock24h", false)
     val lockMinutes get() = json.optInt("lockMinutes", 10).coerceIn(1, 240)
     val cards: List<String> get() = json.optJSONArray("cards").strings()
+    /** Optional deep link opened inside the card's app (e.g. a page in the Apple TV app). */
+    fun cardLink(card: String): String? = json.optJSONObject("cardLinks")?.optString(card)?.takeIf { it.isNotBlank() }
     fun cardAction(card: String): String? = json.optJSONObject("cardActions")?.optString(card)?.takeIf { it.isNotBlank() }
     val weatherLabel get() = json.optJSONObject("weather")?.optString("label") ?: "Weather"
     val lat get() = json.optJSONObject("weather")?.optDouble("lat", 30.628) ?: 30.628

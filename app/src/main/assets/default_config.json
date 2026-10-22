@@ -18,7 +18,7 @@
     "atr"
   ],
   "cardActions": {
-    "race": "com.formulaone.production",
+    "race": "com.apple.atve.amazon.appletv",
     "aggies": "com.espn.gtv"
   },
   "weather": {
@@ -67,5 +67,8 @@
   ],
   "configUrl": "",
   "updateUrl": "",
-  "lockMinutes": 10
+  "lockMinutes": 10,
+  "cardLinks": {
+    "race": ""
+  }
 }

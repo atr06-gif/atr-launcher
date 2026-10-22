@@ -99,7 +99,7 @@ class SettingsActivity : Activity() {
             background = bgd
             setOnClickListener { go() }
             setOnFocusChangeListener { v, has ->
-                bgd.setStroke(if (has) U.px(4) else 0, th.accent)
+                if (has) bgd.setStroke(U.px(4), th.accent) else bgd.setStroke(0, android.graphics.Color.TRANSPARENT)
                 v.animate().scaleX(if (has) 1.02f else 1f).scaleY(if (has) 1.02f else 1f).setDuration(120).start()
             }
         }

@@ -96,7 +96,7 @@ class PinView(ctx: Context, private val th: Theme, private val creating: Boolean
         background = bg
         isFocusable = true; isClickable = true
         setOnFocusChangeListener { v, has ->
-            bg.setStroke(if (has) U.px(5) else 0, if (k == "OK") th.cardText else th.accent)
+            if (has) bg.setStroke(U.px(5), if (k == "OK") th.cardText else th.accent) else bg.setStroke(0, android.graphics.Color.TRANSPARENT)
             v.animate().scaleX(if (has) 1.08f else 1f).scaleY(if (has) 1.08f else 1f).setDuration(110).start()
         }
         setOnClickListener { press(k) }

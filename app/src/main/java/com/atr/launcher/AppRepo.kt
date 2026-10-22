@@ -35,6 +35,17 @@ object AppRepo {
         return runCatching { ctx.startActivity(i); true }.getOrDefault(false)
     }
 
+    /** Opens [link] inside [pkg] when given (deep link), otherwise just launches the app. */
+    fun open(ctx: Context, pkg: String, link: String?): Boolean {
+        if (!link.isNullOrBlank()) {
+            val ok = runCatching {
+                ctx.startActivity(Intent(Intent.ACTION_VIEW, android.net.Uri.parse(link)).setPackage(pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); true
+            }.getOrDefault(false)
+            if (ok) return true
+        }
+        return launch(ctx, pkg)
+    }
+
     fun isInstalled(ctx: Context, pkg: String) =
         runCatching { ctx.packageManager.getApplicationInfo(pkg, 0); true }.getOrDefault(false)
 

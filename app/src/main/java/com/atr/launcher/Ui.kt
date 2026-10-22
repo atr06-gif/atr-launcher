@@ -170,7 +170,7 @@ class InfoCard(ctx: Context, label: String, private val theme: Theme) : LinearLa
         addView(line3, U.lp(U.WRAP, U.WRAP, 0, U.px(10), 0, 0))
         isFocusable = true; isClickable = true
         U.focusGrow(this, 1.03f) { has ->
-            (background as LayerDrawable).getDrawable(1).let { (it as GradientDrawable).setStroke(if (has) U.px(4) else 0, theme.accent) }
+            (background as LayerDrawable).getDrawable(1).let { (it as GradientDrawable).setStroke(if (has) U.px(4) else 0, if (has) theme.accent else Color.TRANSPARENT) }
         }
     }
 
@@ -199,7 +199,7 @@ class RingsCard(ctx: Context, private val theme: Theme) : LinearLayout(ctx) {
         addView(status, U.lp(U.WRAP, U.WRAP, 0, U.px(10), 0, 0))
         addView(rings, LayoutParams(U.MATCH, 0, 1f).apply { topMargin = U.px(6) })
         isFocusable = true; isClickable = true
-        U.focusGrow(this, 1.03f) { has -> (body).setStroke(if (has) U.px(4) else 0, theme.accent) }
+        U.focusGrow(this, 1.03f) { has -> body.setStroke(if (has) U.px(4) else 0, if (has) theme.accent else Color.TRANSPARENT) }
     }
 
     fun set(list: List<Ring>, message: String = "") {

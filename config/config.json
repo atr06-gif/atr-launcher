@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "theme": {
     "page": "#F4F6FA",
     "pageLow": "#E3EAF6",
@@ -18,7 +18,7 @@
     "atr"
   ],
   "cardActions": {
-    "race": "com.formulaone.production",
+    "race": "com.apple.atve.amazon.appletv",
     "aggies": "com.espn.gtv"
   },
   "weather": {
@@ -69,5 +69,8 @@
   ],
   "configUrl": "",
   "updateUrl": "",
-  "lockMinutes": 10
+  "lockMinutes": 10,
+  "cardLinks": {
+    "race": ""
+  }
 }

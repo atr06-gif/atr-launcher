@@ -141,7 +141,7 @@ class LauncherActivity : Activity() {
             }
             val title = when (key) { "race" -> "Race weekend"; "class" -> "Next up"; "aggies" -> "Aggie football"; "weather" -> Config.weatherLabel; else -> key }
             val card = InfoCard(this, title, th)
-            card.setOnClickListener { Config.cardAction(key)?.let { pkg -> if (!AppRepo.launch(this, pkg)) toast("That app isn't installed") } }
+            card.setOnClickListener { Config.cardAction(key)?.let { pkg -> if (!AppRepo.open(this, pkg, Config.cardLink(key))) toast("That app isn't installed") } }
             card.set("…")
             cards[key] = card
             cardRow.addView(card, lp)
@@ -247,16 +247,21 @@ class LauncherActivity : Activity() {
                 val t = TileView(this, "${s.event} · ${s.start.format(short)}${if (done) " · done" else " · in " + countdown(s.start)}", null, null, s.session,
                     sub = if (done) "Done" else s.start.format(short))
                     .apply { theme = this@LauncherActivity.th; glyphSize = if (s.session.length > 6) 38f else 56f; alpha = if (done) 0.55f else 1f }
-                t.setOnClickListener { AppRepo.launch(this, "com.formulaone.production") }
+                t.setOnClickListener { openRace() }
                 row.add(t)
             }
             standings.forEach { d ->
                 val t = TileView(this, "P${d.pos} ${d.name} · ${d.team} · ${d.points} pts", null, null, "P${d.pos}", sub = "${d.code} · ${d.points} pts")
                     .apply { theme = this@LauncherActivity.th; glyphSize = 56f }
-                t.setOnClickListener { AppRepo.launch(this, "com.formulaone.production") }
+                t.setOnClickListener { openRace() }
                 row.add(t)
             }
         }
+    }
+
+    private fun openRace() {
+        val pkg = Config.cardAction("race") ?: "com.apple.atve.amazon.appletv"
+        if (!AppRepo.open(this, pkg, Config.cardLink("race"))) toast("That app isn't installed")
     }
 
     private fun appMenu(a: AppEntry, pinned: Boolean) {
