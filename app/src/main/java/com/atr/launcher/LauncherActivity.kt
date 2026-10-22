@@ -128,7 +128,7 @@ class LauncherActivity : Activity() {
         scroll.addView(content)
         root.addView(scroll, FrameLayout.LayoutParams(U.MATCH, U.MATCH))
 
-        content.addView(header(), U.lp(U.MATCH, U.px(150)))
+        content.addView(header(), U.lp(U.MATCH, U.px(178)))
 
         val cardRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; clipChildren = false }
         cards.clear(); ringsCard = null
@@ -182,7 +182,7 @@ class LauncherActivity : Activity() {
         clockCol.addView(clock); clockCol.addView(date, U.lp(U.WRAP, U.WRAP, 0, U.px(4), 0, 0))
         clockCol.addView(weatherLine, U.lp(U.WRAP, U.WRAP, 0, U.px(4), 0, 0))
         right.addView(clockCol)
-        h.addView(right, FrameLayout.LayoutParams(U.WRAP, U.WRAP, Gravity.END or Gravity.TOP).apply { rightMargin = U.px(64); topMargin = U.px(40) })
+        h.addView(right, FrameLayout.LayoutParams(U.WRAP, U.WRAP, Gravity.END or Gravity.TOP).apply { rightMargin = U.px(64); topMargin = U.px(34) })
         return h
     }
 
@@ -244,14 +244,15 @@ class LauncherActivity : Activity() {
             val now = ZonedDateTime.now(java.time.ZoneId.of("America/Chicago"))
             sessions.forEach { s ->
                 val done = s.start.isBefore(now.minusHours(2))
-                val t = TileView(this, "${s.event} · ${s.start.format(short)}${if (done) " · done" else " · in " + countdown(s.start)}", null, null, s.session)
+                val t = TileView(this, "${s.event} · ${s.start.format(short)}${if (done) " · done" else " · in " + countdown(s.start)}", null, null, s.session,
+                    sub = if (done) "Done" else s.start.format(short))
                     .apply { theme = this@LauncherActivity.th; glyphSize = if (s.session.length > 6) 38f else 56f; alpha = if (done) 0.55f else 1f }
                 t.setOnClickListener { AppRepo.launch(this, "com.formulaone.production") }
                 row.add(t)
             }
             standings.forEach { d ->
-                val t = TileView(this, "${d.name} · ${d.team} · ${d.points} pts", null, null, "P${d.pos} ${d.code}")
-                    .apply { theme = this@LauncherActivity.th; glyphSize = 44f }
+                val t = TileView(this, "P${d.pos} ${d.name} · ${d.team} · ${d.points} pts", null, null, "P${d.pos}", sub = "${d.code} · ${d.points} pts")
+                    .apply { theme = this@LauncherActivity.th; glyphSize = 56f }
                 t.setOnClickListener { AppRepo.launch(this, "com.formulaone.production") }
                 row.add(t)
             }

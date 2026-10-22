@@ -66,7 +66,7 @@ class BackgroundView(ctx: Context) : View(ctx) {
 
 /** One app, input or shortcut. Wide TV banner when the app has one, otherwise icon plus name on a dark tile. */
 @SuppressLint("ViewConstructor")
-class TileView(ctx: Context, val label: String, private val banner: Drawable?, private val icon: Drawable?, private val glyph: String? = null) : View(ctx) {
+class TileView(ctx: Context, val label: String, private val banner: Drawable?, private val icon: Drawable?, private val glyph: String? = null, private val sub: String? = null) : View(ctx) {
     var theme: Theme = Config.theme
     var glyphSize = 64f
     private val radius = U.pxf(16)
@@ -87,7 +87,7 @@ class TileView(ctx: Context, val label: String, private val banner: Drawable?, p
                 tp.color = theme.accent; tp.typeface = U.bold; tp.textSize = U.pxf(glyphSize)
                 c.drawText(glyph, w / 2, h * 0.52f, tp)
                 tp.color = theme.cardText; tp.typeface = U.medium; tp.textSize = U.pxf(26)
-                c.drawText(label, w / 2, h * 0.82f, tp)
+                c.drawText(fit(sub ?: label, w - U.pxf(24)), w / 2, h * 0.82f, tp)
             }
             else -> {
                 val s = (h * 0.46f).toInt()
