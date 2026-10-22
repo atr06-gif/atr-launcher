@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -19,6 +19,10 @@ jobs:
         with:
           distribution: temurin
           java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: "platforms;android-35 build-tools;35.0.0"
 
       - uses: gradle/actions/setup-gradle@v4
         with:
@@ -39,7 +43,13 @@ jobs:
 
       - name: Compile check (no signing key yet)
         if: steps.key.outputs.signed != 'true'
-        run: gradle --no-daemon assembleDebug
+        run: |
+          set +e
+          gradle --no-daemon assembleDebug 2>&1 | tee build.log
+          status=${PIPESTATUS[0]}
+          grep -E "^e: |error:" build.log | head -60 | while IFS= read -r l; do echo "::error::$l"; done
+          sed -n '/What went wrong/,/Try:/p' build.log | head -40 | while IFS= read -r l; do [ -n "$l" ] && echo "::error::$l"; done
+          exit $status
 
       - name: Build release APK
         if: steps.key.outputs.signed == 'true'
@@ -51,10 +61,16 @@ jobs:
           VC=$((100 + ${{ github.run_number }}))
           VN="1.0.${{ github.run_number }}"
           echo "VC=$VC" >> $GITHUB_ENV; echo "VN=$VN" >> $GITHUB_ENV
+          set +e
           gradle --no-daemon assembleRelease \
             -PversionCode=$VC -PversionName=$VN \
             -PupdateUrl=https://github.com/${{ github.repository }}/releases/latest/download/version.json \
-            -PconfigUrl=https://raw.githubusercontent.com/${{ github.repository }}/main/config/config.json
+            -PconfigUrl=https://raw.githubusercontent.com/${{ github.repository }}/main/config/config.json 2>&1 | tee build.log
+          status=${PIPESTATUS[0]}
+          grep -E "^e: |error:" build.log | head -60 | while IFS= read -r l; do echo "::error::$l"; done
+          sed -n '/What went wrong/,/Try:/p' build.log | head -40 | while IFS= read -r l; do [ -n "$l" ] && echo "::error::$l"; done
+          [ $status -ne 0 ] && exit $status
+          set -e
           mkdir -p out
           cp app/build/outputs/apk/release/app-release.apk out/atr-launcher.apk
           cat > out/version.json <<JSON
