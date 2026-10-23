@@ -164,30 +164,20 @@ class LauncherActivity : Activity() {
         scroll.addView(content)
         root.addView(scroll, FrameLayout.LayoutParams(U.MATCH, U.MATCH))
 
-        content.addView(header(), U.lp(U.MATCH, U.px(178)))
+        content.addView(header(), U.lp(U.MATCH, U.px(150)))
 
         cards.clear(); ringsCard = null; weatherCard = null; weekCard = null; tasksCard = null
+        // Top: countdown row(s), always visible
         Config.cardRows.forEachIndexed { r, keys ->
-            val cardRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; clipChildren = false }
-            val height = when { keys.any { it == "week" || it == "tasks" } -> 340; keys.any { it == "atr" || it == "weather" } -> 330; else -> 300 }
-            keys.forEachIndexed { i, key ->
-                val lp = LinearLayout.LayoutParams(0, U.px(height), if (key == "week") 2.2f else 1f).apply { if (i > 0) leftMargin = U.px(28) }
-                when (key) {
-                    "week" -> { val wk = WeekCard(this, th); weekCard = wk; cardRow.addView(wk, lp) }
-                    "tasks" -> { val tc = TasksCard(this, th); tasksCard = tc; cardRow.addView(tc, lp) }
-                    "atr" -> { val rc = RingsCard(this, th); rc.setOnClickListener { refreshCards(force = true) }; ringsCard = rc; cardRow.addView(rc, lp) }
-                    "weather" -> { val wc = WeatherCard(this, Config.weatherLabel, th); weatherCard = wc; cardRow.addView(wc, lp) }
-                    else -> {
-                        val title = when (key) { "race" -> "Race weekend"; "class" -> "Next up"; "exam" -> "Next exam"; "aggies" -> "Aggie football"; else -> key }
-                        val card = InfoCard(this, title, th)
-                        card.setOnClickListener { Config.cardAction(key)?.let { pkg -> if (!AppRepo.open(this, pkg, Config.cardLink(key))) toast("That app isn't installed") } }
-                        card.set("…")
-                        cards[key] = card
-                        cardRow.addView(card, lp)
-                    }
-                }
-            }
-            content.addView(cardRow, U.lp(U.MATCH, U.WRAP, U.px(64), U.px(if (r == 0) 10 else 18), U.px(64), U.px(10)))
+            content.addView(cardRow(keys, 280), U.lp(U.MATCH, U.WRAP, U.px(64), U.px(if (r == 0) 4 else 18), U.px(64), U.px(4)))
+        }
+        // Second slot: rows that take turns (weather + ATR Global, then today + week ahead)
+        val rot = Config.rotatingRows
+        if (rot.isNotEmpty()) {
+            val rotator = RotatorView(this, Config.rotateSeconds)
+            rot.forEach { keys -> rotator.addPage(cardRow(keys, 300)) }
+            content.addView(rotator, U.lp(U.MATCH, U.px(300), U.px(64), U.px(22), U.px(64), 0))
+            content.addView(rotator.dotsView(), U.lp(U.MATCH, U.px(22), 0, U.px(8), 0, 0))
         }
 
         rowsBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; clipChildren = false; clipToPadding = false }
@@ -200,13 +190,58 @@ class LauncherActivity : Activity() {
         if (!Lock.isUnlocked) showLock()
     }
 
+    private fun cardRow(keys: List<String>, height: Int): LinearLayout {
+        val row = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; clipChildren = false }
+        keys.forEachIndexed { i, key ->
+            val lp = LinearLayout.LayoutParams(0, U.px(height), if (key == "week") 2.2f else 1f).apply { if (i > 0) leftMargin = U.px(28) }
+            when (key) {
+                "week" -> { val wk = WeekCard(this, th); weekCard = wk; row.addView(wk, lp) }
+                "tasks" -> { val tc = TasksCard(this, th); tasksCard = tc; row.addView(tc, lp) }
+                "atr" -> { val rc = RingsCard(this, th); rc.setOnClickListener { pickRings() }; ringsCard = rc; row.addView(rc, lp) }
+                "weather" -> { val wc = WeatherCard(this, Config.weatherLabel, th); weatherCard = wc; row.addView(wc, lp) }
+                else -> {
+                    val title = when (key) { "race" -> "Race weekend"; "class" -> "Next up"; "exam" -> "Next exam"; "aggies" -> "Aggie football"; else -> key }
+                    val card = InfoCard(this, title, th)
+                    card.setOnClickListener { Config.cardAction(key)?.let { pkg -> if (!AppRepo.open(this, pkg, Config.cardLink(key))) toast("That app isn't installed") } }
+                    card.set("…")
+                    cards[key] = card
+                    row.addView(card, lp)
+                }
+            }
+        }
+        return row
+    }
+
+    /** Click ATR Global: choose up to 4 rings to show. */
+    private fun pickRings() {
+        val all = NotionFeed.cachedRings(this)
+        if (all.isEmpty()) { toast("Rings are still loading"); return }
+        val names = all.map { it.metric }.toTypedArray()
+        val current = NotionFeed.pick(all).map { it.metric }.toMutableList()
+        val checked = BooleanArray(names.size) { names[it] in current }
+        AlertDialog.Builder(this, R.style.AtrDialog).setTitle("Pick up to 4 rings")
+            .setMultiChoiceItems(names, checked) { dialog, which, isChecked ->
+                if (isChecked && checked.count { it } >= 4) {
+                    (dialog as AlertDialog).listView.setItemChecked(which, false); checked[which] = false
+                    toast("4 max. Uncheck one first.")
+                } else checked[which] = isChecked
+            }
+            .setPositiveButton("Save") { _, _ ->
+                Config.ringPicks = names.filterIndexed { i, _ -> checked[i] }.toMutableList()
+                refreshCards(force = true)
+            }
+            .setNeutralButton("Exam prep (default)") { _, _ -> Config.ringPicks = mutableListOf(); refreshCards(force = true) }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
     private fun header(): View {
         val h = FrameLayout(this)
         logo = ImageView(this).apply {
             setImageResource(R.drawable.atr_logo); adjustViewBounds = true
             colorFilter = PorterDuffColorFilter(th.logo, PorterDuff.Mode.SRC_IN)
         }
-        h.addView(logo, FrameLayout.LayoutParams(U.WRAP, U.px(64)).apply { leftMargin = U.px(64); topMargin = U.px(48) })
+        h.addView(logo, FrameLayout.LayoutParams(U.WRAP, U.px(60)).apply { leftMargin = U.px(64); topMargin = U.px(42) })
 
         val right = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
         updatePill = U.text(this, 22, android.graphics.Color.WHITE, U.bold).apply {
@@ -224,7 +259,7 @@ class LauncherActivity : Activity() {
         clockCol.addView(clock); clockCol.addView(date, U.lp(U.WRAP, U.WRAP, 0, U.px(4), 0, 0))
         clockCol.addView(weatherLine, U.lp(U.WRAP, U.WRAP, 0, U.px(4), 0, 0))
         right.addView(clockCol)
-        h.addView(right, FrameLayout.LayoutParams(U.WRAP, U.WRAP, Gravity.END or Gravity.TOP).apply { rightMargin = U.px(64); topMargin = U.px(34) })
+        h.addView(right, FrameLayout.LayoutParams(U.WRAP, U.WRAP, Gravity.END or Gravity.TOP).apply { rightMargin = U.px(64); topMargin = U.px(28) })
         return h
     }
 
@@ -237,7 +272,7 @@ class LauncherActivity : Activity() {
             for (spec in specs) {
                 val row = RowView(this, spec.title, th)
                 when (spec.type) {
-                    "pinned" -> pinned.forEach { row.add(appTile(it, pinned = true)) }
+                    "pinned" -> { pinned.forEach { row.add(appTile(it, pinned = true)) }; row.add(chillTile()) }
                     "all" -> apps.filter { it.pkg !in hidden && pinned.none { p -> p.pkg == it.pkg } }.forEach { row.add(appTile(it, pinned = false)) }
                     "inputs" -> inputs.forEach { inp ->
                         val t = TileView(this, inp.label, null, null, glyph = "HDMI").apply { theme = this@LauncherActivity.th }
@@ -267,6 +302,7 @@ class LauncherActivity : Activity() {
         fun tile(label: String, glyph: String, go: () -> Unit) =
             TileView(this, label, null, null, glyph).apply { theme = this@LauncherActivity.th; setOnClickListener { go() } }
         return listOf(
+            chillTile(),
             tile("Fire TV Settings", "⚙") { runCatching { startActivity(Intent(android.provider.Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } },
             tile("ATR Settings", "ATR") { startActivity(Intent(this, SettingsActivity::class.java)) },
             tile("Amazon Home", "a") {
@@ -280,6 +316,9 @@ class LauncherActivity : Activity() {
         )
     }
 
+    private fun chillTile(): View = TileView(this, "Chill mode", null, null, "CHILL", sub = "Screensaver now")
+        .apply { theme = this@LauncherActivity.th; glyphSize = 52f; setOnClickListener { startActivity(Intent(this@LauncherActivity, ChillActivity::class.java)) } }
+
     private fun racingTiles(row: RowView) {
         val feeds = Feeds(this)
         val standings = StandingsCard(this, th)
@@ -288,13 +327,17 @@ class LauncherActivity : Activity() {
         App.bg({ Triple(feeds.weekend(), feeds.driverStandings(5), feeds.constructorStandings(5)) }) { (sessions, ds, ts) ->
             standings.set(ds, ts)
             val now = ZonedDateTime.now(java.time.ZoneId.of("America/Chicago"))
-            sessions.forEach { s ->
-                val done = s.start.isBefore(now.minusHours(2))
-                val t = TileView(this, "${s.event} · ${s.start.format(short)}${if (done) " · done" else " · in " + countdown(s.start)}", null, null, s.session,
-                    sub = if (done) "Done" else s.start.format(short))
-                    .apply { theme = this@LauncherActivity.th; glyphSize = if (s.session.length > 6) 38f else 56f; alpha = if (done) 0.55f else 1f }
-                t.setOnClickListener { openRace() }
-                row.add(t)
+            val tf = DateTimeFormatter.ofPattern("h:mm a", Locale.US)
+            sessions.groupBy { it.start.toLocalDate() }.entries.sortedBy { it.key.toEpochDay() }.forEach { (day, list) ->
+                val title = day.format(DateTimeFormatter.ofPattern("EEEE · MMM d", Locale.US))
+                val card = DayCard(this, title, th)
+                list.forEach { s ->
+                    val done = s.start.isBefore(now.minusHours(2))
+                    val status = when { done -> "DONE"; s.start.isBefore(now) -> "LIVE"; else -> "in " + countdown(s.start) }
+                    card.add(s.session, s.start.format(tf), status, done)
+                }
+                card.setOnClickListener { openRace() }
+                row.add(card, w = 440, h = 400, grow = 1.03f)
             }
         }
     }

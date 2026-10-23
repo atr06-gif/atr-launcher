@@ -65,6 +65,12 @@
                 android:resource="@xml/home_watcher" />
         </service>
 
+        <activity
+            android:name=".ChillActivity"
+            android:exported="false"
+            android:screenOrientation="landscape"
+            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen" />
+
         <service
             android:name=".AtrDream"
             android:exported="true"

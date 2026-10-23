@@ -229,39 +229,29 @@ class RingsCard(ctx: Context, private val theme: Theme) : LinearLayout(ctx) {
         U.focusGrow(this, 1.03f) { has -> body.setStroke(if (has) U.px(4) else 0, if (has) theme.accent else Color.TRANSPARENT) }
     }
 
-    private var pages: List<List<Ring>> = emptyList()
-    private var page = 0
-    private val flip = object : Runnable {
-        override fun run() {
-            if (pages.size > 1) { page = (page + 1) % pages.size; rings.list = pages[page]; postDelayed(this, 12_000) }
-        }
-    }
-
-    /** More than 8 rings rotate in pages of 8 every 12 seconds. */
+    /** Up to 4 big rings, no rotation. Pick which ones by clicking the card. */
     fun set(list: List<Ring>, message: String = "") {
-        removeCallbacks(flip)
-        pages = list.chunked(8); page = 0
-        rings.list = pages.firstOrNull() ?: emptyList()
-        if (pages.size > 1) postDelayed(flip, 12_000)
+        rings.list = list.take(4)
         status.text = message
         status.visibility = if (message.isBlank()) View.GONE else View.VISIBLE
     }
 }
 
 class RingsView(ctx: Context, private val theme: Theme) : View(ctx) {
-    var list: List<Ring> = emptyList(); set(v) { field = v.take(8); invalidate() }
+    var list: List<Ring> = emptyList(); set(v) { field = v.take(4); invalidate() }
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
     private val arc = RectF()
 
     override fun onDraw(c: Canvas) {
         if (list.isEmpty()) return
-        val cols = minOf(4, list.size); val rows = (list.size + cols - 1) / cols
-        val cw = width.toFloat() / cols; val ch = height.toFloat() / rows
-        val label = U.pxf(17); val d = minOf(cw * 0.66f, ch - label * 2.6f).coerceAtLeast(U.pxf(30))
-        val stroke = d * 0.12f
+        val cols = list.size
+        val cw = width.toFloat() / cols; val h = height.toFloat()
+        val label = U.pxf(21); val sub = U.pxf(17)
+        val d = minOf(cw * 0.78f, h - label * 1.6f - sub * 1.6f - U.pxf(10)).coerceAtLeast(U.pxf(40))
+        val stroke = d * 0.11f
         list.forEachIndexed { i, r ->
-            val cx = cw * (i % cols) + cw / 2; val top = ch * (i / cols) + U.pxf(2)
+            val cx = cw * i + cw / 2; val top = U.pxf(4)
             arc.set(cx - d / 2 + stroke / 2, top + stroke / 2, cx + d / 2 - stroke / 2, top + d - stroke / 2)
             p.style = Paint.Style.STROKE; p.strokeWidth = stroke; p.strokeCap = Paint.Cap.ROUND
             p.color = Color.argb(48, Color.red(theme.cardText), Color.green(theme.cardText), Color.blue(theme.cardText))
@@ -270,10 +260,14 @@ class RingsView(ctx: Context, private val theme: Theme) : View(ctx) {
             p.color = r.color
             if (frac > 0f) c.drawArc(arc, -90f, 360f * frac, false, p)
             p.style = Paint.Style.FILL
-            tp.color = theme.cardText; tp.typeface = U.bold; tp.textSize = d * 0.28f
+            tp.color = theme.cardText; tp.typeface = U.bold; tp.textSize = d * 0.25f
             c.drawText("${Math.round(frac * 100)}%", cx, top + d / 2 + tp.textSize * 0.36f, tp)
-            tp.color = theme.cardMuted; tp.typeface = U.medium; tp.textSize = label
-            c.drawText(fit(r.metric, cw - U.pxf(10)), cx, top + d + label * 1.25f, tp)
+            tp.color = theme.cardText; tp.typeface = U.medium; tp.textSize = label
+            c.drawText(fit(r.metric, cw - U.pxf(12)), cx, top + d + label * 1.3f, tp)
+            tp.color = theme.cardMuted; tp.typeface = U.regular; tp.textSize = sub
+            val cur = if (r.current % 1.0 == 0.0) r.current.toInt().toString() else "%.1f".format(r.current)
+            val goal = if (r.goal % 1.0 == 0.0) r.goal.toInt().toString() else "%.1f".format(r.goal)
+            c.drawText("$cur / $goal", cx, top + d + label * 1.3f + sub * 1.4f, tp)
         }
     }
 
@@ -498,5 +492,68 @@ class TasksCard(ctx: Context, theme: Theme) : CardShell(ctx, "Today", theme) {
             list.addView(r, U.lp(U.MATCH, U.WRAP, 0, U.px(6), 0, U.px(6)))
         }
         if (tasks.size > 5) list.addView(U.text(context, 16, theme.cardMuted, U.regular, "+${tasks.size - 5} more in Notion"))
+    }
+}
+
+/**
+ * Holds several card rows in one slot and crossfades between them every [seconds].
+ * It never switches while something inside it has focus, so it won't move under the remote.
+ */
+class RotatorView(ctx: Context, private val seconds: Int) : android.widget.FrameLayout(ctx) {
+    private val pages = mutableListOf<View>()
+    private var index = 0
+    private val dots = LinearLayout(ctx).apply { orientation = LinearLayout.HORIZONTAL; gravity = Gravity.CENTER }
+    private val next = object : Runnable {
+        override fun run() {
+            if (pages.size > 1 && !hasFocus()) show((index + 1) % pages.size)
+            postDelayed(this, seconds * 1000L)
+        }
+    }
+
+    fun addPage(v: View) {
+        pages += v
+        addView(v, LayoutParams(U.MATCH, U.MATCH))
+        v.visibility = if (pages.size == 1) View.VISIBLE else View.GONE
+        drawDots()
+    }
+
+    private fun show(i: Int) {
+        val old = pages[index]; val new = pages[i]; index = i
+        new.alpha = 0f; new.visibility = View.VISIBLE
+        new.animate().alpha(1f).setDuration(500).start()
+        old.animate().alpha(0f).setDuration(500).withEndAction { old.visibility = View.GONE; old.alpha = 1f }.start()
+        drawDots()
+    }
+
+    private fun drawDots() {
+        dots.removeAllViews()
+        if (pages.size < 2) return
+        pages.indices.forEach { i ->
+            dots.addView(View(context).apply {
+                background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(if (i == index) Config.theme.accent else Color.argb(90, 128, 128, 128)) }
+            }, U.lp(U.px(10), U.px(10), U.px(5), 0, U.px(5), 0))
+        }
+    }
+
+    /** The little page dots, placed by the caller under the rotator. */
+    fun dotsView(): View = dots
+
+    override fun onAttachedToWindow() { super.onAttachedToWindow(); removeCallbacks(next); postDelayed(next, seconds * 1000L) }
+    override fun onDetachedFromWindow() { removeCallbacks(next); super.onDetachedFromWindow() }
+}
+
+/** One race day in the Racing hub: day name, then each session with its time and countdown. */
+class DayCard(ctx: Context, title: String, theme: Theme) : CardShell(ctx, title, theme) {
+    private val list = LinearLayout(ctx).apply { orientation = VERTICAL }
+    init { addView(list, U.lp(U.MATCH, U.WRAP, 0, U.px(14), 0, 0)) }
+
+    fun add(session: String, time: String, status: String, done: Boolean) {
+        val r = LinearLayout(context).apply { orientation = VERTICAL; alpha = if (done) 0.5f else 1f }
+        val top = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.BOTTOM }
+        top.addView(U.text(context, 40, theme.cardText, U.bold, session))
+        top.addView(U.text(context, 22, theme.accent, U.bold, status), U.lp(U.WRAP, U.WRAP, U.px(14), 0, 0, U.px(6)))
+        r.addView(top)
+        r.addView(U.text(context, 22, theme.cardMuted, U.medium, time))
+        list.addView(r, U.lp(U.MATCH, U.WRAP, 0, U.px(8), 0, U.px(12)))
     }
 }

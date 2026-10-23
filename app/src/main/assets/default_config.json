@@ -76,7 +76,12 @@
       "race",
       "class",
       "exam"
-    ],
+    ]
+  ],
+  "autoDark": true,
+  "teamColors": {},
+  "hiddenRings": [],
+  "rotatingRows": [
     [
       "weather",
       "atr"
@@ -86,7 +91,6 @@
       "week"
     ]
   ],
-  "autoDark": true,
-  "teamColors": {},
-  "hiddenRings": []
+  "rotateSeconds": 15,
+  "ringPicks": []
 }

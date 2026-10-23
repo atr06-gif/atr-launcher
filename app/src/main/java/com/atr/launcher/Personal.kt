@@ -167,8 +167,13 @@ object NotionFeed {
         }.sortedWith(compareBy({ groupOrder(it.second) }, { it.first })).map { it.third }
     }
 
-    /** Rings minus the ones hidden in ATR Settings. */
-    fun visibleRings(ctx: Context): List<Ring> { val hidden = Config.hiddenRings.toSet(); return rings(ctx).filter { it.metric !in hidden } }
+    /** The 4 picked rings in pick order, or the first 4 Academics rings (exam prep) by default. */
+    fun visibleRings(ctx: Context): List<Ring> = pick(rings(ctx))
+    fun pick(all: List<Ring>): List<Ring> {
+        val picks = Config.ringPicks
+        val chosen = picks.mapNotNull { n -> all.firstOrNull { it.metric == n } }
+        return if (chosen.isNotEmpty()) chosen.take(4) else (all.filter { it.group == "Academics" } + all.filter { it.group != "Academics" }).take(4)
+    }
 
     /** Notion tasks not done that are scheduled today, due today, or overdue. Soonest first. */
     fun todaysTasks(ctx: Context): List<TaskItem>? {

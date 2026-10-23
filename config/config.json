@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 6,
   "theme": {
     "page": "#F4F6FA",
     "pageLow": "#E3EAF6",
@@ -78,7 +78,12 @@
       "race",
       "class",
       "exam"
-    ],
+    ]
+  ],
+  "autoDark": true,
+  "teamColors": {},
+  "hiddenRings": [],
+  "rotatingRows": [
     [
       "weather",
       "atr"
@@ -88,7 +93,6 @@
       "week"
     ]
   ],
-  "autoDark": true,
-  "teamColors": {},
-  "hiddenRings": []
+  "rotateSeconds": 15,
+  "ringPicks": []
 }

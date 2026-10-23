@@ -21,20 +21,22 @@ class Feeds(ctx: Context) {
     val zone: ZoneId = ZoneId.of("America/Chicago")
     private val cacheDir = File(ctx.cacheDir, "http").apply { mkdirs() }
 
-    fun get(url: String, ttlMin: Long): String? {
+    fun get(url: String, ttlMin: Long): String? { return synchronized(lockFor(url)) {
         val f = File(cacheDir, Integer.toHexString(url.hashCode()))
         if (f.exists() && System.currentTimeMillis() - f.lastModified() < ttlMin * 60_000) return f.readText()
-        return try {
+        try {
             val c = URL(url).openConnection() as HttpURLConnection
             c.connectTimeout = 6000; c.readTimeout = 8000
             c.setRequestProperty("User-Agent", "ATR-Launcher/${BuildConfig.VERSION_NAME}")
             if (c.responseCode !in 200..299) throw Exception("HTTP ${c.responseCode}")
             val body = c.inputStream.bufferedReader().readText()
-            f.writeText(body); body
+            // Write to a temp file and swap it in, so a reader never sees half a file
+            val tmp = File(cacheDir, f.name + ".tmp"); tmp.writeText(body); tmp.renameTo(f)
+            body
         } catch (e: Exception) {
             if (f.exists()) f.readText() else null
         }
-    }
+    } }
 
     // ---------- F1 (Jolpica / Ergast) plus custom events like IMSA ----------
     fun races(limit: Int = 3): List<RaceItem> {
@@ -126,6 +128,9 @@ class Feeds(ctx: Context) {
     }
 
     companion object Teams {
+        private val locks = java.util.concurrent.ConcurrentHashMap<String, Any>()
+        fun lockFor(url: String): Any = locks.getOrPut(url) { Any() }
+
         /** Team colors by Ergast constructorId. Config "teamColors" can override any of them. */
         private val defaults = mapOf(
             "red_bull" to "#3671C6", "ferrari" to "#E8002D", "mercedes" to "#27F4D2", "mclaren" to "#FF8000",

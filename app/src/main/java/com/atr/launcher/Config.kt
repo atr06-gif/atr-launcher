@@ -84,6 +84,11 @@ object Config {
     val cardRows: List<List<String>> get() = json.optJSONArray("cardRows")?.let { a ->
         (0 until a.length()).mapNotNull { a.optJSONArray(it) }.map { it.strings() }.filter { it.isNotEmpty() }
     }?.takeIf { it.isNotEmpty() } ?: listOf(cards)
+    /** Card rows that share one slot and take turns. */
+    val rotatingRows: List<List<String>> get() = json.optJSONArray("rotatingRows")?.let { a ->
+        (0 until a.length()).mapNotNull { a.optJSONArray(it) }.map { it.strings() }.filter { it.isNotEmpty() }
+    } ?: emptyList()
+    val rotateSeconds get() = json.optInt("rotateSeconds", 15).coerceIn(5, 300)
     /** Optional deep link opened inside the card's app (e.g. a page in the Apple TV app). */
     fun cardLink(card: String): String? = json.optJSONObject("cardLinks")?.optString(card)?.takeIf { it.isNotBlank() }
     fun cardAction(card: String): String? = json.optJSONObject("cardActions")?.optString(card)?.takeIf { it.isNotBlank() }
@@ -102,6 +107,11 @@ object Config {
     var pinned: MutableList<String>
         get() = json.optJSONArray("pinned").strings().toMutableList()
         set(v) { json.put("pinned", JSONArray(v)); save() }
+    /** The 4 ATR Global rings to show, by metric name. Empty means the first 4 Academics rings (exam prep). */
+    var ringPicks: MutableList<String>
+        get() = json.optJSONArray("ringPicks").strings().toMutableList()
+        set(v) { json.put("ringPicks", JSONArray(v.take(4))); save() }
+
     var hiddenRings: MutableList<String>
         get() = json.optJSONArray("hiddenRings").strings().toMutableList()
         set(v) { json.put("hiddenRings", JSONArray(v)); save() }

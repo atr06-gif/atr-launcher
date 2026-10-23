@@ -70,11 +70,8 @@ class SettingsActivity : Activity() {
         if (!on) button("Open Accessibility settings") { runCatching { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) } }
 
         section("ATR Global rings")
-        val names = runCatching { NotionFeed.cachedRings(this).map { it.metric } }.getOrDefault(emptyList())
-        if (names.isEmpty()) info("Rings load after your Notion key is linked. Open this again in a minute.")
-        else info("Pick which rings show. More than 8 rotate every 12 seconds.")
-        val hiddenRings = Config.hiddenRings.toSet()
-        names.forEach { n -> button((if (n in hiddenRings) "Hidden:  " else "Showing:  ") + n) { Config.toggleRing(n); build() } }
+        info("Click the ATR Global card on the home screen to pick up to 4 rings. With none picked it shows your exam prep rings.")
+        if (Config.ringPicks.isNotEmpty()) button("Go back to exam prep rings") { Config.ringPicks = mutableListOf(); toast("Done. Press Home."); build() }
 
         section("Hidden apps")
         val hidden = Config.hidden
