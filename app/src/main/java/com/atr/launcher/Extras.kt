@@ -61,9 +61,11 @@ class GreetingView(ctx: Context, th: Theme, private val onClose: () -> Unit) : F
 class ScreensaverView(ctx: Context) : FrameLayout(ctx) {
     private val zone = ZoneId.of("America/Chicago")
     private val block = LinearLayout(ctx).apply { orientation = LinearLayout.VERTICAL; gravity = Gravity.CENTER_HORIZONTAL; setPadding(U.px(40), U.px(40), U.px(40), U.px(40)) }
-    private val clock = U.text(ctx, 200, Color.WHITE, U.bold)
-    private val date = U.text(ctx, 30, Theme.dark(null).accent, U.bold).apply { letterSpacing = 0.16f }
-    private val info = U.text(ctx, 28, Theme.dark(null).cardMuted, U.medium).apply { maxLines = 3; ellipsize = null; gravity = Gravity.CENTER }
+    private fun full(t: android.widget.TextView) = t.apply { ellipsize = null; maxLines = 1; gravity = Gravity.CENTER; setHorizontallyScrolling(false) }
+    private val clock = full(U.text(ctx, 200, Color.WHITE, U.bold))
+    private val date = full(U.text(ctx, 30, Theme.dark(null).accent, U.bold)).apply { letterSpacing = 0.16f }
+    private val raceLine = full(U.text(ctx, 28, Color.WHITE, U.medium))
+    private val weatherLine = full(U.text(ctx, 26, Theme.dark(null).cardMuted, U.medium))
     private var race: RaceItem? = null
     private var weatherText = ""
 
@@ -78,7 +80,7 @@ class ScreensaverView(ctx: Context) : FrameLayout(ctx) {
                 val cd = if (d.isNegative) "LIVE" else if (d.toDays() > 0) "${d.toDays()}d ${d.toHours() % 24}h" else "${d.toHours()}h ${d.toMinutes() % 60}m"
                 "${r.series} ${r.event} ${r.session}  ·  $cd"
             }
-            info.text = listOf(raceText, weatherText).filter { it.isNotBlank() }.joinToString("\n")
+            raceLine.text = raceText; weatherLine.text = weatherText
             postDelayed(this, 15_000)
         }
     }
@@ -97,8 +99,12 @@ class ScreensaverView(ctx: Context) : FrameLayout(ctx) {
             setImageResource(R.drawable.atr_logo); adjustViewBounds = true
             colorFilter = PorterDuffColorFilter(Color.WHITE, PorterDuff.Mode.SRC_IN); alpha = 0.9f
         }, LinearLayout.LayoutParams(U.WRAP, U.px(56)).apply { bottomMargin = U.px(20) })
-        block.addView(clock); block.addView(date, U.lp(U.WRAP, U.WRAP, 0, U.px(4), 0, U.px(24))); block.addView(info)
-        addView(block, LayoutParams(U.WRAP, U.WRAP, Gravity.CENTER))
+        block.addView(clock, U.lp(U.MATCH, U.WRAP))
+        block.addView(date, U.lp(U.MATCH, U.WRAP, 0, U.px(4), 0, U.px(24)))
+        block.addView(raceLine, U.lp(U.MATCH, U.WRAP))
+        block.addView(weatherLine, U.lp(U.MATCH, U.WRAP, 0, U.px(8), 0, 0))
+        // Fixed width so text never gets measured too narrow and cut off
+        addView(block, LayoutParams(U.px(1200), U.WRAP, Gravity.CENTER))
         val feeds = Feeds(ctx)
         App.bg({ feeds.races(1).firstOrNull() to feeds.weather() }) { (r, w) ->
             race = r

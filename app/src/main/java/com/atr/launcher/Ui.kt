@@ -510,7 +510,10 @@ class RotatorView(ctx: Context, private val seconds: Int) : android.widget.Frame
         }
     }
 
+    init { clipChildren = false; clipToPadding = false }
+
     fun addPage(v: View) {
+        (v as? android.view.ViewGroup)?.clipChildren = false
         pages += v
         addView(v, LayoutParams(U.MATCH, U.MATCH))
         v.visibility = if (pages.size == 1) View.VISIBLE else View.GONE
@@ -533,6 +536,28 @@ class RotatorView(ctx: Context, private val seconds: Int) : android.widget.Frame
                 background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(if (i == index) Config.theme.accent else Color.argb(90, 128, 128, 128)) }
             }, U.lp(U.px(10), U.px(10), U.px(5), 0, U.px(5), 0))
         }
+    }
+
+    /** Right on the last card goes to the next page, Left on the first goes back. Wraps around. */
+    override fun dispatchKeyEvent(event: android.view.KeyEvent): Boolean {
+        val code = event.keyCode
+        if (event.action == android.view.KeyEvent.ACTION_DOWN && pages.size > 1 &&
+            (code == android.view.KeyEvent.KEYCODE_DPAD_RIGHT || code == android.view.KeyEvent.KEYCODE_DPAD_LEFT)) {
+            val page = pages[index] as? android.view.ViewGroup
+            val focused = findFocus()
+            if (page != null && focused != null) {
+                val dir = if (code == android.view.KeyEvent.KEYCODE_DPAD_RIGHT) View.FOCUS_RIGHT else View.FOCUS_LEFT
+                if (android.view.FocusFinder.getInstance().findNextFocus(page, focused, dir) == null) {
+                    val ni = if (dir == View.FOCUS_RIGHT) (index + 1) % pages.size else (index - 1 + pages.size) % pages.size
+                    show(ni)
+                    val target = pages[ni] as? android.view.ViewGroup
+                    val kids = (0 until (target?.childCount ?: 0)).mapNotNull { target?.getChildAt(it) }.filter { it.isFocusable }
+                    (if (dir == View.FOCUS_RIGHT) kids.firstOrNull() else kids.lastOrNull())?.requestFocus()
+                    return true
+                }
+            }
+        }
+        return super.dispatchKeyEvent(event)
     }
 
     /** The little page dots, placed by the caller under the rotator. */

@@ -390,7 +390,7 @@ class LauncherActivity : Activity() {
                 val n = items.firstOrNull()
                 if (n == null) card.set("No races", "Schedule unavailable") else {
                     val more = items.drop(1).take(2).joinToString("   ") { "${it.session.ifBlank { it.event }} ${it.start.format(short)}" }
-                    card.set(countdown(n.start), "${n.series} ${n.event}".trim(), "${n.session.ifBlank { "Green flag" }} · ${n.start.format(long)}", more)
+                    card.set(countdown(n.start), "${n.series} ${n.event}".trim(), "${n.session.ifBlank { "Green flag" }} · ${n.start.format(long)}")
                 }
             }
         }
@@ -413,8 +413,7 @@ class LauncherActivity : Activity() {
                         val live = next.start.isBefore(now)
                         val then = events.firstOrNull { it.start.isAfter(next.start) }
                         card.set(if (live) "NOW" else countdown(next.start), next.title,
-                            next.start.format(long) + if (next.location.isNotBlank()) " · ${next.location}" else "",
-                            then?.let { "Then: ${it.title} ${it.start.format(short)}" } ?: "")
+                            next.start.format(long) + if (next.location.isNotBlank()) " · ${next.location}" else "")
                     }
                 }
             }
@@ -476,8 +475,7 @@ class LauncherActivity : Activity() {
                             val ring = rings.firstOrNull { r -> next.title.startsWith(r.metric, ignoreCase = true) || next.title.contains(r.metric, ignoreCase = true) }
                             if (ring != null && ring.goal > 0) card.setBadge((ring.current / ring.goal).toFloat(), ring.color, "READY") else card.setBadge(null)
                         }
-                        card.set(big, next.title, next.start.format(long) + if (next.location.isNotBlank()) " · ${next.location}" else "",
-                            then?.let { "Then: ${it.title} · ${java.time.temporal.ChronoUnit.DAYS.between(now.toLocalDate(), it.start.toLocalDate())} days" } ?: "")
+                        card.set(big, next.title, next.start.format(long) + if (next.location.isNotBlank()) " · ${next.location}" else "")
                     }
                 }
             }
