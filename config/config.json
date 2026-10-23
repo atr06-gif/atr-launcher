@@ -1,5 +1,5 @@
 {
-  "version": 3,
+  "version": 4,
   "theme": {
     "page": "#F4F6FA",
     "pageLow": "#E3EAF6",
@@ -72,5 +72,16 @@
   "lockMinutes": 10,
   "cardLinks": {
     "race": ""
-  }
+  },
+  "cardRows": [
+    [
+      "race",
+      "class",
+      "exam"
+    ],
+    [
+      "weather",
+      "atr"
+    ]
+  ]
 }

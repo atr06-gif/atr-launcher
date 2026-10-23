@@ -40,6 +40,7 @@ class LauncherActivity : Activity() {
     private lateinit var logo: ImageView
     private val cards = LinkedHashMap<String, InfoCard>()
     private var ringsCard: RingsCard? = null
+    private var weatherCard: WeatherCard? = null
     private lateinit var rootFrame: FrameLayout
     private lateinit var weatherLine: TextView
     private var lockView: PinView? = null
@@ -130,23 +131,27 @@ class LauncherActivity : Activity() {
 
         content.addView(header(), U.lp(U.MATCH, U.px(178)))
 
-        val cardRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; clipChildren = false }
-        cards.clear(); ringsCard = null
-        Config.cards.forEachIndexed { i, key ->
-            val lp = LinearLayout.LayoutParams(0, U.px(300), if (key == "atr") 1.5f else 1f).apply { if (i > 0) leftMargin = U.px(28) }
-            if (key == "atr") {
-                val rc = RingsCard(this, th)
-                rc.setOnClickListener { refreshCards(force = true) }
-                ringsCard = rc; cardRow.addView(rc, lp); return@forEachIndexed
+        cards.clear(); ringsCard = null; weatherCard = null
+        Config.cardRows.forEachIndexed { r, keys ->
+            val cardRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; clipChildren = false }
+            val height = if (keys.any { it == "atr" || it == "weather" }) 330 else 300
+            keys.forEachIndexed { i, key ->
+                val lp = LinearLayout.LayoutParams(0, U.px(height), 1f).apply { if (i > 0) leftMargin = U.px(28) }
+                when (key) {
+                    "atr" -> { val rc = RingsCard(this, th); rc.setOnClickListener { refreshCards(force = true) }; ringsCard = rc; cardRow.addView(rc, lp) }
+                    "weather" -> { val wc = WeatherCard(this, Config.weatherLabel, th); weatherCard = wc; cardRow.addView(wc, lp) }
+                    else -> {
+                        val title = when (key) { "race" -> "Race weekend"; "class" -> "Next up"; "exam" -> "Next exam"; "aggies" -> "Aggie football"; else -> key }
+                        val card = InfoCard(this, title, th)
+                        card.setOnClickListener { Config.cardAction(key)?.let { pkg -> if (!AppRepo.open(this, pkg, Config.cardLink(key))) toast("That app isn't installed") } }
+                        card.set("…")
+                        cards[key] = card
+                        cardRow.addView(card, lp)
+                    }
+                }
             }
-            val title = when (key) { "race" -> "Race weekend"; "class" -> "Next up"; "aggies" -> "Aggie football"; "weather" -> Config.weatherLabel; else -> key }
-            val card = InfoCard(this, title, th)
-            card.setOnClickListener { Config.cardAction(key)?.let { pkg -> if (!AppRepo.open(this, pkg, Config.cardLink(key))) toast("That app isn't installed") } }
-            card.set("…")
-            cards[key] = card
-            cardRow.addView(card, lp)
+            content.addView(cardRow, U.lp(U.MATCH, U.WRAP, U.px(64), U.px(if (r == 0) 10 else 18), U.px(64), U.px(10)))
         }
-        if (cards.isNotEmpty() || ringsCard != null) content.addView(cardRow, U.lp(U.MATCH, U.WRAP, U.px(64), U.px(10), U.px(64), U.px(10)))
 
         rowsBox = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; clipChildren = false; clipToPadding = false }
         content.addView(rowsBox, U.lp(U.MATCH, U.WRAP))
@@ -322,7 +327,7 @@ class LauncherActivity : Activity() {
                 val now = ZonedDateTime.now(java.time.ZoneId.of("America/Chicago"))
                 val next = events.firstOrNull { it.end.isAfter(now) }
                 when {
-                    !linked -> card.set("Link calendar", "Run 6 - Send my keys to TV.bat", "on your PC")
+                    !linked -> card.set("Link calendar", "Run 7 - Finish setup.bat", "on your PC")
                     next == null -> card.set("Free", "Nothing on the calendar", "for the next two weeks")
                     else -> {
                         val live = next.start.isBefore(now)
@@ -337,14 +342,38 @@ class LauncherActivity : Activity() {
         ringsCard?.let { rc ->
             App.bg({ NotionFeed.rings(this) to Secrets.has(this, Secrets.NOTION_TOKEN) }) { (rings, linked) ->
                 when {
-                    !linked -> rc.set(emptyList(), "Link Notion: run 6 - Send my keys to TV.bat")
+                    !linked -> rc.set(emptyList(), "Link Notion: run 7 - Finish setup.bat")
                     rings.isEmpty() -> rc.set(emptyList(), "Couldn't reach Notion. Showing nothing yet.")
                     else -> rc.set(rings)
                 }
             }
         }
+        weatherLine.visibility = if (weatherCard != null) View.GONE else View.VISIBLE
         App.bg({ feeds.weather() ?: Weather(-999, 0, 0, 0, -1) }) { w ->
             weatherLine.text = if (w.nowF == -999) "" else "${w.nowF}° ${Feeds.describe(w.code)} · ${Config.weatherLabel}"
+        }
+        weatherCard?.let { wc ->
+            App.bg({ (feeds.weather() ?: Weather(-999, 0, 0, 0, -1)) to feeds.hourly(16) }) { (w, hours) ->
+                wc.set(if (w.nowF == -999) null else w, hours)
+            }
+        }
+        cards["exam"]?.let { card ->
+            App.bg({ CalendarFeed.upcoming(this, feeds, 150) to Secrets.has(this, Secrets.CALENDAR_ICS) }) { (events, linked) ->
+                val now = ZonedDateTime.now(java.time.ZoneId.of("America/Chicago"))
+                val exams = events.filter { it.title.contains("EXAM", ignoreCase = true) && it.end.isAfter(now) }
+                val next = exams.firstOrNull()
+                when {
+                    !linked -> card.set("Link calendar", "Run 7 - Finish setup.bat", "on your PC")
+                    next == null -> card.set("None", "No exams on the calendar", "in the next 5 months")
+                    else -> {
+                        val days = java.time.temporal.ChronoUnit.DAYS.between(now.toLocalDate(), next.start.toLocalDate())
+                        val big = when { next.start.isBefore(now) -> "NOW"; days >= 2 -> "$days days"; days == 1L -> "Tomorrow"; else -> countdown(next.start) }
+                        val then = exams.getOrNull(1)
+                        card.set(big, next.title, next.start.format(long) + if (next.location.isNotBlank()) " · ${next.location}" else "",
+                            then?.let { "Then: ${it.title} · ${java.time.temporal.ChronoUnit.DAYS.between(now.toLocalDate(), it.start.toLocalDate())} days" } ?: "")
+                    }
+                }
+            }
         }
         cards["weather"]?.let { card ->
             App.bg({ feeds.weather() ?: Weather(-999, 0, 0, 0, -1) }) { w ->

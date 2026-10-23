@@ -243,3 +243,96 @@ class RingsView(ctx: Context, private val theme: Theme) : View(ctx) {
         var t = s; while (t.length > 1 && tp.measureText("$t…") > max) t = t.dropLast(1); return "$t…"
     }
 }
+
+/** Weather widget: now on the left, hour by hour temperature line and rain chance bars on the right. */
+class WeatherCard(ctx: Context, label: String, private val theme: Theme) : LinearLayout(ctx) {
+    private val now = U.text(ctx, 88, theme.cardText, U.bold)
+    private val cond = U.text(ctx, 26, theme.cardText, U.medium)
+    private val hilo = U.text(ctx, 22, theme.cardMuted)
+    private val note = U.text(ctx, 20, theme.accent, U.medium)
+    private val chart = HourlyChart(ctx, theme)
+
+    init {
+        orientation = VERTICAL
+        setPadding(U.px(30), U.px(28), U.px(30), U.px(26))
+        val r = U.pxf(22)
+        val strip = GradientDrawable().apply { cornerRadius = r; setColor(theme.accent) }
+        val body = GradientDrawable().apply { cornerRadius = r; setColor(theme.card) }
+        background = LayerDrawable(arrayOf(strip, body)).apply { setLayerInset(1, 0, 0, 0, U.px(10)) }
+        val head = LinearLayout(ctx).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        head.addView(View(ctx).apply { setBackgroundColor(theme.accent) }, U.lp(U.px(6), U.px(28), 0, 0, U.px(12), 0))
+        head.addView(U.text(ctx, 24, theme.accent, U.bold, label.uppercase()).apply { letterSpacing = 0.12f })
+        addView(head)
+        val body2 = LinearLayout(ctx).apply { orientation = HORIZONTAL }
+        val left = LinearLayout(ctx).apply { orientation = VERTICAL }
+        left.addView(now, U.lp(U.WRAP, U.WRAP, 0, U.px(6), 0, 0))
+        left.addView(cond, U.lp(U.WRAP, U.WRAP, 0, U.px(4), 0, 0))
+        left.addView(hilo, U.lp(U.WRAP, U.WRAP, 0, U.px(8), 0, 0))
+        left.addView(note, U.lp(U.WRAP, U.WRAP, 0, U.px(8), 0, 0))
+        body2.addView(left, LayoutParams(U.px(230), U.MATCH))
+        body2.addView(chart, LayoutParams(0, U.MATCH, 1f).apply { leftMargin = U.px(16) })
+        addView(body2, LayoutParams(U.MATCH, 0, 1f).apply { topMargin = U.px(4) })
+        isFocusable = true; isClickable = true
+        U.focusGrow(this, 1.02f) { has -> body.setStroke(if (has) U.px(4) else 0, if (has) theme.accent else Color.TRANSPARENT) }
+        now.text = "--°"
+    }
+
+    fun set(w: Weather?, hours: List<Hour>) {
+        if (w == null) { now.text = "--°"; cond.text = "Weather unavailable"; hilo.text = ""; note.text = "" }
+        else {
+            now.text = "${w.nowF}°"; cond.text = Feeds.describe(w.code)
+            hilo.text = "H ${w.hiF}°  L ${w.loF}°"
+            val wet = hours.take(12).firstOrNull { it.rainPct >= 50 }
+            note.text = when {
+                wet != null -> "Rain likely around ${wet.time.format(java.time.format.DateTimeFormatter.ofPattern("h a", java.util.Locale.US))}"
+                w.rainPct >= 50 -> "Grab an umbrella"
+                else -> ""
+            }
+        }
+        chart.hours = hours
+    }
+}
+
+class HourlyChart(ctx: Context, private val theme: Theme) : View(ctx) {
+    var hours: List<Hour> = emptyList(); set(v) { field = v; invalidate() }
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val tp = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
+    private val hourFmt = java.time.format.DateTimeFormatter.ofPattern("h a", java.util.Locale.US)
+
+    override fun onDraw(c: Canvas) {
+        val hs = hours; if (hs.size < 2) return
+        val w = width.toFloat(); val h = height.toFloat()
+        val labelH = U.pxf(26); val tempLabel = U.pxf(28); val barMax = h * 0.22f
+        val top = tempLabel + U.pxf(6); val lineBottom = h - labelH - barMax - U.pxf(10)
+        val lo = hs.minOf { it.tempF }; val hi = hs.maxOf { it.tempF }; val span = (hi - lo).coerceAtLeast(4)
+        val step = w / hs.size
+        fun x(i: Int) = step * i + step / 2
+        fun y(t: Int) = lineBottom - (t - lo).toFloat() / span * (lineBottom - top)
+
+        // rain chance bars along the bottom
+        hs.forEachIndexed { i, hr ->
+            if (hr.rainPct <= 0) return@forEachIndexed
+            val bh = barMax * hr.rainPct / 100f
+            p.style = Paint.Style.FILL
+            p.color = Color.argb(60 + hr.rainPct * 150 / 100, Color.red(theme.accent), Color.green(theme.accent), Color.blue(theme.accent))
+            c.drawRoundRect(x(i) - step * 0.28f, h - labelH - bh, x(i) + step * 0.28f, h - labelH, U.pxf(4), U.pxf(4), p)
+        }
+        // temperature line
+        val path = Path()
+        hs.forEachIndexed { i, hr -> if (i == 0) path.moveTo(x(i), y(hr.tempF)) else path.lineTo(x(i), y(hr.tempF)) }
+        p.style = Paint.Style.STROKE; p.strokeWidth = U.pxf(4); p.strokeCap = Paint.Cap.ROUND; p.strokeJoin = Paint.Join.ROUND
+        p.color = theme.cardText
+        c.drawPath(path, p)
+        // dots, temps and hour labels every 3 hours (first point is "Now")
+        p.style = Paint.Style.FILL
+        hs.forEachIndexed { i, hr ->
+            if (i % 3 != 0) return@forEachIndexed
+            p.color = if (i == 0) theme.accent else theme.cardText
+            c.drawCircle(x(i), y(hr.tempF), U.pxf(if (i == 0) 8 else 6), p)
+            tp.typeface = U.bold; tp.textSize = U.pxf(24); tp.color = theme.cardText
+            c.drawText("${hr.tempF}°", x(i), y(hr.tempF) - U.pxf(14), tp)
+            tp.typeface = U.medium; tp.textSize = U.pxf(19); tp.color = theme.cardMuted
+            c.drawText(if (i == 0) "Now" else hr.time.format(hourFmt), x(i), h - U.pxf(4), tp)
+        }
+    }
+}

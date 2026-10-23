@@ -13,6 +13,7 @@ import java.time.format.DateTimeFormatter
 
 data class RaceItem(val series: String, val event: String, val session: String, val start: ZonedDateTime)
 data class Weather(val nowF: Int, val hiF: Int, val loF: Int, val rainPct: Int, val code: Int)
+data class Hour(val time: ZonedDateTime, val tempF: Int, val rainPct: Int, val code: Int)
 data class Game(val opponent: String, val home: Boolean, val start: ZonedDateTime, val tv: String)
 
 /** Live data for the info cards. Each source keeps its last good copy, so the cards still show something offline. */
@@ -115,6 +116,24 @@ class Feeds(ctx: Context) {
                 c.getInt("weather_code")
             )
         }.getOrNull()
+    }
+
+    /** Hour by hour for the weather widget: from this hour forward, [count] hours. */
+    fun hourly(count: Int = 16): List<Hour> {
+        val url = "https://api.open-meteo.com/v1/forecast?latitude=${Config.lat}&longitude=${Config.lon}" +
+            "&hourly=temperature_2m,precipitation_probability,weather_code" +
+            "&temperature_unit=fahrenheit&timezone=America%2FChicago&forecast_days=2"
+        val o = runCatching { JSONObject(get(url, 30) ?: return emptyList()) }.getOrNull() ?: return emptyList()
+        return runCatching {
+            val h = o.getJSONObject("hourly")
+            val t = h.getJSONArray("time"); val temp = h.getJSONArray("temperature_2m")
+            val rain = h.optJSONArray("precipitation_probability"); val code = h.optJSONArray("weather_code")
+            val nowHour = ZonedDateTime.now(zone).withMinute(0).withSecond(0).withNano(0)
+            (0 until t.length()).map { i ->
+                Hour(java.time.LocalDateTime.parse(t.getString(i)).atZone(zone), Math.round(temp.getDouble(i)).toInt(),
+                    rain?.optInt(i, 0) ?: 0, code?.optInt(i, 0) ?: 0)
+            }.filter { !it.time.isBefore(nowHour) }.take(count)
+        }.getOrDefault(emptyList())
     }
 
     // ---------- Texas A&M football (ESPN team 245) ----------

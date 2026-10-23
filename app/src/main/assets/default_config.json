@@ -70,5 +70,16 @@
   "lockMinutes": 10,
   "cardLinks": {
     "race": ""
-  }
+  },
+  "cardRows": [
+    [
+      "race",
+      "class",
+      "exam"
+    ],
+    [
+      "weather",
+      "atr"
+    ]
+  ]
 }

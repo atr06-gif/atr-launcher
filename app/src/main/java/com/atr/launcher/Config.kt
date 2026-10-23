@@ -52,6 +52,10 @@ object Config {
     val clock24h get() = json.optBoolean("clock24h", false)
     val lockMinutes get() = json.optInt("lockMinutes", 10).coerceIn(1, 240)
     val cards: List<String> get() = json.optJSONArray("cards").strings()
+    /** Rows of cards, e.g. [["race","class","exam"],["weather","atr"]]. Falls back to the single "cards" row. */
+    val cardRows: List<List<String>> get() = json.optJSONArray("cardRows")?.let { a ->
+        (0 until a.length()).mapNotNull { a.optJSONArray(it) }.map { it.strings() }.filter { it.isNotEmpty() }
+    }?.takeIf { it.isNotEmpty() } ?: listOf(cards)
     /** Optional deep link opened inside the card's app (e.g. a page in the Apple TV app). */
     fun cardLink(card: String): String? = json.optJSONObject("cardLinks")?.optString(card)?.takeIf { it.isNotBlank() }
     fun cardAction(card: String): String? = json.optJSONObject("cardActions")?.optString(card)?.takeIf { it.isNotBlank() }
