@@ -59,13 +59,22 @@ class SettingsActivity : Activity() {
         section("Your keys")
         info("Notion (ATR Global rings): " + if (Secrets.has(this, Secrets.NOTION_TOKEN)) "linked" else "not linked")
         info("Google Calendar (Next up card): " + if (Secrets.has(this, Secrets.CALENDAR_ICS)) "linked" else "not linked")
-        info("To change these, edit my_keys.json on your PC and run 6 - Send my keys to TV.bat.")
+        info("Robotics calendar (Week ahead): " + if (Secrets.has(this, Secrets.ROBOTICS_ICS)) "linked" else "not linked")
+        info("Notion tasks (Today card): " + if (Secrets.has(this, Secrets.NOTION_TASKS_DATA_SOURCE)) "linked" else "not linked")
+        info("To change these, edit my_keys.json on your PC and run 7 - Finish setup.")
         button("Forget my keys on this TV") { Secrets.clear(this); toast("Keys removed"); build() }
 
         section("Home button")
         val on = (Settings.Secure.getString(contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: "").contains(packageName)
         info(if (on) "While unlocked, Home brings you back here. When locked, Home goes to Amazon for everyone else." else "Home button helper is OFF. Turn on \"ATR Home button\" in Accessibility.")
         if (!on) button("Open Accessibility settings") { runCatching { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) } }
+
+        section("ATR Global rings")
+        val names = runCatching { NotionFeed.cachedRings(this).map { it.metric } }.getOrDefault(emptyList())
+        if (names.isEmpty()) info("Rings load after your Notion key is linked. Open this again in a minute.")
+        else info("Pick which rings show. More than 8 rotate every 12 seconds.")
+        val hiddenRings = Config.hiddenRings.toSet()
+        names.forEach { n -> button((if (n in hiddenRings) "Hidden:  " else "Showing:  ") + n) { Config.toggleRing(n); build() } }
 
         section("Hidden apps")
         val hidden = Config.hidden

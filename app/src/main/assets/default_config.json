@@ -80,6 +80,13 @@
     [
       "weather",
       "atr"
+    ],
+    [
+      "tasks",
+      "week"
     ]
-  ]
+  ],
+  "autoDark": true,
+  "teamColors": {},
+  "hiddenRings": []
 }

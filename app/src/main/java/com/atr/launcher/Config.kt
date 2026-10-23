@@ -13,11 +13,36 @@ data class Theme(
 ) {
     companion object {
         private fun c(o: JSONObject?, k: String, d: String) = try { Color.parseColor(o?.optString(k, d) ?: d) } catch (e: Exception) { Color.parseColor(d) }
+        /** Night palette: black page, slightly lifted cards, white type, same blue. */
+        fun dark(o: JSONObject?) = Theme(
+            c(o, "page", "#05070B"), c(o, "pageLow", "#0A1222"), c(o, "ink", "#FFFFFF"), c(o, "inkMuted", "#9AA6BD"),
+            c(o, "card", "#111827"), c(o, "cardText", "#FFFFFF"), c(o, "cardMuted", "#9AA6BD"), c(o, "accent", "#1E6BFF"),
+            c(o, "logo", "#FFFFFF")
+        )
         fun from(o: JSONObject?) = Theme(
             c(o, "page", "#F4F6FA"), c(o, "pageLow", "#E3EAF6"), c(o, "ink", "#05070B"), c(o, "inkMuted", "#4B5568"),
             c(o, "card", "#05070B"), c(o, "cardText", "#FFFFFF"), c(o, "cardMuted", "#9AA6BD"), c(o, "accent", "#1E6BFF"),
             c(o, "logo", "#05070B")
         )
+    }
+}
+
+/** Day or night look. Updated from College Station's sunrise and sunset. */
+object Appearance {
+    @Volatile var dark = false
+    @Volatile var sunrise: java.time.ZonedDateTime? = null
+    @Volatile var sunset: java.time.ZonedDateTime? = null
+
+    /** Returns true when the look flipped and the screen should rebuild. */
+    fun update(): Boolean {
+        val now = java.time.ZonedDateTime.now(java.time.ZoneId.of("America/Chicago"))
+        val rise = sunrise; val set = sunset
+        val night = when {
+            !Config.autoDark -> false
+            rise != null && set != null -> now.isBefore(rise) || !now.isBefore(set)
+            else -> now.hour >= 19 || now.hour < 7
+        }
+        val changed = night != dark; dark = night; return changed
     }
 }
 
@@ -48,7 +73,10 @@ object Config {
     fun replaceWith(newJson: JSONObject) { json = newJson; save() }
 
     val version get() = json.optInt("version", 1)
-    val theme get() = Theme.from(json.optJSONObject("theme"))
+    /** Light by day, dark from sunset to sunrise when autoDark is on. */
+    val theme get() = if (Appearance.dark) Theme.dark(json.optJSONObject("darkTheme")) else Theme.from(json.optJSONObject("theme"))
+    val autoDark get() = json.optBoolean("autoDark", true)
+    val teamColors: Map<String, String> get() = json.optJSONObject("teamColors")?.let { o -> o.keys().asSequence().associateWith { o.optString(it) } } ?: emptyMap()
     val clock24h get() = json.optBoolean("clock24h", false)
     val lockMinutes get() = json.optInt("lockMinutes", 10).coerceIn(1, 240)
     val cards: List<String> get() = json.optJSONArray("cards").strings()
@@ -74,6 +102,11 @@ object Config {
     var pinned: MutableList<String>
         get() = json.optJSONArray("pinned").strings().toMutableList()
         set(v) { json.put("pinned", JSONArray(v)); save() }
+    var hiddenRings: MutableList<String>
+        get() = json.optJSONArray("hiddenRings").strings().toMutableList()
+        set(v) { json.put("hiddenRings", JSONArray(v)); save() }
+    fun toggleRing(name: String) { hiddenRings = hiddenRings.apply { if (!remove(name)) add(name) } }
+
     var hidden: MutableList<String>
         get() = json.optJSONArray("hidden").strings().toMutableList()
         set(v) { json.put("hidden", JSONArray(v)); save() }

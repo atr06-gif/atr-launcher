@@ -81,7 +81,8 @@ class Feeds(ctx: Context) {
         return emptyList()
     }
 
-    data class Standing(val pos: Int, val code: String, val name: String, val team: String, val points: String)
+    data class Standing(val pos: Int, val code: String, val name: String, val team: String, val points: String, val teamId: String = "")
+    data class TeamStanding(val pos: Int, val name: String, val points: String, val teamId: String)
 
     fun driverStandings(top: Int = 5): List<Standing> {
         val body = get("https://api.jolpi.ca/ergast/f1/current/driverStandings.json", 6 * 60) ?: return emptyList()
@@ -90,8 +91,55 @@ class Feeds(ctx: Context) {
         }.getOrNull() ?: return emptyList()
         return (0 until minOf(top, list.length())).map { i ->
             val d = list.getJSONObject(i); val drv = d.getJSONObject("Driver")
+            val con = d.optJSONArray("Constructors")?.optJSONObject(0)
             Standing(d.optInt("position", i + 1), drv.optString("code", drv.optString("familyName").take(3).uppercase()),
-                drv.optString("familyName"), d.optJSONArray("Constructors")?.optJSONObject(0)?.optString("name") ?: "", d.optString("points"))
+                drv.optString("familyName"), con?.optString("name") ?: "", d.optString("points"), con?.optString("constructorId") ?: "")
+        }
+    }
+
+    fun constructorStandings(top: Int = 5): List<TeamStanding> {
+        val body = get("https://api.jolpi.ca/ergast/f1/current/constructorStandings.json", 6 * 60) ?: return emptyList()
+        val list = runCatching {
+            JSONObject(body).getJSONObject("MRData").getJSONObject("StandingsTable").getJSONArray("StandingsLists").getJSONObject(0).getJSONArray("ConstructorStandings")
+        }.getOrNull() ?: return emptyList()
+        return (0 until minOf(top, list.length())).map { i ->
+            val d = list.getJSONObject(i); val c = d.getJSONObject("Constructor")
+            TeamStanding(d.optInt("position", i + 1), c.optString("name"), d.optString("points"), c.optString("constructorId"))
+        }
+    }
+
+    /** A&M games in the next [days] days, for the week ahead strip. */
+    fun aggieGames(days: Long = 8): List<Game> {
+        val body = get("https://site.api.espn.com/apis/site/v2/sports/football/college-football/teams/245/schedule", 3 * 60) ?: return emptyList()
+        val ev = runCatching { JSONObject(body).getJSONArray("events") }.getOrNull() ?: return emptyList()
+        val now = ZonedDateTime.now(zone); val end = now.plusDays(days)
+        return (0 until ev.length()).mapNotNull { i ->
+            val e = ev.getJSONObject(i)
+            val start = parseEspn(e.optString("date")) ?: return@mapNotNull null
+            if (start.isBefore(now.minusHours(4)) || start.isAfter(end)) return@mapNotNull null
+            val cs = e.optJSONArray("competitions")?.optJSONObject(0)?.optJSONArray("competitors") ?: return@mapNotNull null
+            var home = true; var opp = "TBA"
+            for (j in 0 until cs.length()) { val c = cs.getJSONObject(j); val t = c.optJSONObject("team")
+                if (t?.optString("id") == "245") home = c.optString("homeAway") == "home" else opp = t?.optString("shortDisplayName")?.ifBlank { null } ?: t?.optString("displayName") ?: "TBA" }
+            Game(opp, home, start, "")
+        }
+    }
+
+    companion object Teams {
+        /** Team colors by Ergast constructorId. Config "teamColors" can override any of them. */
+        private val defaults = mapOf(
+            "red_bull" to "#3671C6", "ferrari" to "#E8002D", "mercedes" to "#27F4D2", "mclaren" to "#FF8000",
+            "aston_martin" to "#229971", "alpine" to "#0093CC", "williams" to "#64C4FF", "rb" to "#6692FF",
+            "haas" to "#B6BABD", "sauber" to "#52E252", "audi" to "#BB0A30", "cadillac" to "#C9A86A"
+        )
+        fun describe(code: Int) = when (code) {
+            0 -> "Clear"; 1, 2 -> "Partly cloudy"; 3 -> "Overcast"; 45, 48 -> "Fog"
+            in 51..57 -> "Drizzle"; in 61..67, in 80..82 -> "Rain"; in 71..77, 85, 86 -> "Snow"; in 95..99 -> "Storms"; else -> ""
+        }
+
+        fun teamColor(id: String): Int {
+            val hex = Config.teamColors[id] ?: defaults[id] ?: "#9AA6BD"
+            return runCatching { android.graphics.Color.parseColor(hex) }.getOrDefault(android.graphics.Color.GRAY)
         }
     }
 
@@ -115,6 +163,17 @@ class Feeds(ctx: Context) {
                 d.getJSONArray("precipitation_probability_max").optInt(0),
                 c.getInt("weather_code")
             )
+        }.getOrNull()
+    }
+
+    /** Today's sunrise and sunset in College Station, for auto dark mode. */
+    fun sun(): Pair<ZonedDateTime, ZonedDateTime>? {
+        val url = "https://api.open-meteo.com/v1/forecast?latitude=${Config.lat}&longitude=${Config.lon}&daily=sunrise,sunset&timezone=America%2FChicago&forecast_days=1"
+        val o = runCatching { JSONObject(get(url, 6 * 60) ?: return null) }.getOrNull() ?: return null
+        return runCatching {
+            val d = o.getJSONObject("daily")
+            java.time.LocalDateTime.parse(d.getJSONArray("sunrise").getString(0)).atZone(zone) to
+                java.time.LocalDateTime.parse(d.getJSONArray("sunset").getString(0)).atZone(zone)
         }.getOrNull()
     }
 
@@ -170,11 +229,4 @@ class Feeds(ctx: Context) {
     private fun parseEspn(s: String): ZonedDateTime? =
         runCatching { ZonedDateTime.parse(s, DateTimeFormatter.ISO_DATE_TIME).withZoneSameInstant(zone) }.getOrNull()
             ?: runCatching { OffsetDateTime.parse(s.replace("Z", ":00Z")).atZoneSameInstant(zone) }.getOrNull()
-
-    companion object {
-        fun describe(code: Int) = when (code) {
-            0 -> "Clear"; 1, 2 -> "Partly cloudy"; 3 -> "Overcast"; 45, 48 -> "Fog"
-            in 51..57 -> "Drizzle"; in 61..67, in 80..82 -> "Rain"; in 71..77, 85, 86 -> "Snow"; in 95..99 -> "Storms"; else -> ""
-        }
-    }
 }

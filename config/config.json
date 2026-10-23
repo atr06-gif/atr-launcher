@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "theme": {
     "page": "#F4F6FA",
     "pageLow": "#E3EAF6",
@@ -82,6 +82,13 @@
     [
       "weather",
       "atr"
+    ],
+    [
+      "tasks",
+      "week"
     ]
-  ]
+  ],
+  "autoDark": true,
+  "teamColors": {},
+  "hiddenRings": []
 }

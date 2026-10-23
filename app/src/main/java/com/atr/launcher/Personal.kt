@@ -15,6 +15,7 @@ import java.time.format.DateTimeFormatter
 
 data class CalEvent(val title: String, val location: String, val start: ZonedDateTime, val end: ZonedDateTime)
 data class Ring(val metric: String, val current: Double, val goal: Double, val color: Int, val group: String)
+data class TaskItem(val title: String, val due: LocalDate?, val scheduled: ZonedDateTime?, val priority: String)
 
 /**
  * Google Calendar through its private iCal link: no Google login on the TV.
@@ -23,8 +24,16 @@ data class Ring(val metric: String, val current: Double, val goal: Double, val c
 object CalendarFeed {
     private val zone: ZoneId = ZoneId.of("America/Chicago")
 
-    fun upcoming(ctx: Context, feeds: Feeds, days: Long = 14): List<CalEvent> {
-        val url = Secrets.get(ctx, Secrets.CALENDAR_ICS).ifBlank { return emptyList() }
+    /** Classes calendar (the main private link). */
+    fun upcoming(ctx: Context, feeds: Feeds, days: Long = 14): List<CalEvent> =
+        upcomingFrom(Secrets.get(ctx, Secrets.CALENDAR_ICS), feeds, days)
+
+    /** Aggie Robotics Events calendar. */
+    fun robotics(ctx: Context, feeds: Feeds, days: Long = 8): List<CalEvent> =
+        upcomingFrom(Secrets.get(ctx, Secrets.ROBOTICS_ICS), feeds, days)
+
+    fun upcomingFrom(url: String, feeds: Feeds, days: Long): List<CalEvent> {
+        if (url.isBlank()) return emptyList()
         val body = feeds.get(url, 30) ?: return emptyList()
         val now = ZonedDateTime.now(zone)
         val from = now.minusHours(12); val to = now.plusDays(days)
@@ -137,6 +146,16 @@ object NotionFeed {
         val cache = File(ctx.cacheDir, "notion_rings.json")
         val fresh = cache.exists() && System.currentTimeMillis() - cache.lastModified() < 10 * 60_000
         val body = if (fresh) cache.readText() else (query(ctx, token)?.also { cache.writeText(it) } ?: if (cache.exists()) cache.readText() else return emptyList())
+        return parseRings(body)
+    }
+
+    /** Last fetched rings without touching the network (safe on the UI thread). */
+    fun cachedRings(ctx: Context): List<Ring> {
+        val cache = File(ctx.cacheDir, "notion_rings.json")
+        return if (cache.exists()) parseRings(cache.readText()) else emptyList()
+    }
+
+    private fun parseRings(body: String): List<Ring> {
         val results = runCatching { JSONObject(body).getJSONArray("results") }.getOrNull() ?: return emptyList()
         return (0 until results.length()).mapNotNull { i ->
             val props = results.getJSONObject(i).optJSONObject("properties") ?: return@mapNotNull null
@@ -146,6 +165,37 @@ object NotionFeed {
             Triple(props.optJSONObject("Order")?.optDouble("number", 99.0) ?: 99.0, props.optJSONObject("Group")?.optJSONObject("select")?.optString("name") ?: "",
                 Ring(metric, num(props, "Current"), num(props, "Goal"), color, props.optJSONObject("Group")?.optJSONObject("select")?.optString("name") ?: ""))
         }.sortedWith(compareBy({ groupOrder(it.second) }, { it.first })).map { it.third }
+    }
+
+    /** Rings minus the ones hidden in ATR Settings. */
+    fun visibleRings(ctx: Context): List<Ring> { val hidden = Config.hiddenRings.toSet(); return rings(ctx).filter { it.metric !in hidden } }
+
+    /** Notion tasks not done that are scheduled today, due today, or overdue. Soonest first. */
+    fun todaysTasks(ctx: Context): List<TaskItem>? {
+        val token = Secrets.get(ctx, Secrets.NOTION_TOKEN).ifBlank { return null }
+        val ds = Secrets.get(ctx, Secrets.NOTION_TASKS_DATA_SOURCE); val db = Secrets.get(ctx, Secrets.NOTION_TASKS_DATABASE)
+        if (ds.isBlank() && db.isBlank()) return null
+        val cache = File(ctx.cacheDir, "notion_tasks.json")
+        val fresh = cache.exists() && System.currentTimeMillis() - cache.lastModified() < 10 * 60_000
+        val q = """{"page_size":100,"filter":{"property":"Done","checkbox":{"equals":false}}}"""
+        val body = if (fresh) cache.readText() else {
+            ((if (ds.isNotBlank()) post("https://api.notion.com/v1/data_sources/$ds/query", token, "2025-09-03", q) else null)
+                ?: (if (db.isNotBlank()) post("https://api.notion.com/v1/databases/$db/query", token, "2022-06-28", q) else null))
+                ?.also { cache.writeText(it) } ?: if (cache.exists()) cache.readText() else return emptyList()
+        }
+        val zone = ZoneId.of("America/Chicago"); val today = LocalDate.now(zone)
+        val results = runCatching { JSONObject(body).getJSONArray("results") }.getOrNull() ?: return emptyList()
+        return (0 until results.length()).mapNotNull { i ->
+            val pr = results.getJSONObject(i).optJSONObject("properties") ?: return@mapNotNull null
+            val title = text(pr.optJSONObject("Task"), "title").ifBlank { return@mapNotNull null }
+            val due = pr.optJSONObject("Due")?.optJSONObject("date")?.optString("start")?.takeIf { it.length >= 10 }?.let { runCatching { LocalDate.parse(it.take(10)) }.getOrNull() }
+            val schRaw = pr.optJSONObject("Scheduled")?.optJSONObject("date")?.optString("start")
+            val sch = schRaw?.let { s2 -> runCatching { java.time.OffsetDateTime.parse(s2).atZoneSameInstant(zone) }.getOrNull()
+                ?: runCatching { LocalDate.parse(s2.take(10)).atStartOfDay(zone) }.getOrNull() }
+            val prio = pr.optJSONObject("Priority")?.optJSONObject("select")?.optString("name") ?: ""
+            val relevant = (sch != null && sch.toLocalDate() == today) || (due != null && !due.isAfter(today))
+            if (relevant) TaskItem(title, due, sch, prio) else null
+        }.sortedWith(compareBy({ it.scheduled?.toEpochSecond() ?: Long.MAX_VALUE }, { it.due?.toEpochDay() ?: Long.MAX_VALUE }))
     }
 
     private fun groupOrder(g: String) = when (g) { "Academics" -> 0; "Career" -> 1; "Ventures" -> 2; else -> 3 }

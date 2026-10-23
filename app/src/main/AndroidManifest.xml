@@ -65,6 +65,17 @@
                 android:resource="@xml/home_watcher" />
         </service>
 
+        <service
+            android:name=".AtrDream"
+            android:exported="true"
+            android:label="ATR"
+            android:permission="android.permission.BIND_DREAM_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.dreams.DreamService" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </service>
+
         <provider
             android:name=".ApkProvider"
             android:authorities="com.atr.launcher.apk"

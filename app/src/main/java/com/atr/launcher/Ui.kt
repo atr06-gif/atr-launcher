@@ -128,9 +128,9 @@ class RowView(ctx: Context, title: String, theme: Theme) : LinearLayout(ctx) {
         caption.text = " "
     }
 
-    fun add(tile: View, w: Int = 300, h: Int = 169, gap: Int = 26) {
+    fun add(tile: View, w: Int = 300, h: Int = 169, gap: Int = 26, grow: Float = 1.08f) {
         strip.addView(tile, U.lp(U.px(w), U.px(h), 0, 0, U.px(gap), 0))
-        U.focusGrow(tile) { has ->
+        U.focusGrow(tile, grow) { has ->
             if (has) {
                 caption.text = (tile as? TileView)?.label ?: tile.contentDescription ?: " "
                 tile.post { smoothCenter(tile) }
@@ -178,6 +178,33 @@ class InfoCard(ctx: Context, label: String, private val theme: Theme) : LinearLa
         big.text = b; line1.text = l1; line2.text = l2; line3.text = l3
         line3.visibility = if (l3.isBlank()) View.GONE else View.VISIBLE
     }
+
+    private var badgeFrac: Float? = null
+    private var badgeColor = theme.accent
+    private var badgeLabel = ""
+    private val bp = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val btp = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER }
+
+    /** Small progress ring in the top right corner (exam readiness). Null hides it. */
+    fun setBadge(frac: Float?, color: Int = theme.accent, label: String = "") {
+        badgeFrac = frac; badgeColor = color; badgeLabel = label; invalidate()
+    }
+
+    override fun dispatchDraw(c: Canvas) {
+        super.dispatchDraw(c)
+        val f = badgeFrac ?: return
+        val d = U.pxf(96); val stroke = U.pxf(10)
+        val cx = width - paddingRight - d / 2; val cy = paddingTop + d / 2 + U.pxf(4)
+        val r = RectF(cx - d / 2 + stroke / 2, cy - d / 2 + stroke / 2, cx + d / 2 - stroke / 2, cy + d / 2 - stroke / 2)
+        bp.style = Paint.Style.STROKE; bp.strokeWidth = stroke; bp.strokeCap = Paint.Cap.ROUND
+        bp.color = Color.argb(48, Color.red(theme.cardText), Color.green(theme.cardText), Color.blue(theme.cardText))
+        c.drawArc(r, 0f, 360f, false, bp)
+        bp.color = badgeColor
+        if (f > 0f) c.drawArc(r, -90f, 360f * f.coerceIn(0f, 1f), false, bp)
+        btp.color = theme.cardText; btp.typeface = U.bold; btp.textSize = U.pxf(26)
+        c.drawText("${Math.round(f * 100)}%", cx, cy + U.pxf(9), btp)
+        if (badgeLabel.isNotBlank()) { btp.color = theme.cardMuted; btp.typeface = U.medium; btp.textSize = U.pxf(16); c.drawText(badgeLabel, cx, cy + d / 2 + U.pxf(22), btp) }
+    }
 }
 
 /** ATR Global card: one progress ring per Ring Inputs row, in that row's color. */
@@ -202,8 +229,20 @@ class RingsCard(ctx: Context, private val theme: Theme) : LinearLayout(ctx) {
         U.focusGrow(this, 1.03f) { has -> body.setStroke(if (has) U.px(4) else 0, if (has) theme.accent else Color.TRANSPARENT) }
     }
 
+    private var pages: List<List<Ring>> = emptyList()
+    private var page = 0
+    private val flip = object : Runnable {
+        override fun run() {
+            if (pages.size > 1) { page = (page + 1) % pages.size; rings.list = pages[page]; postDelayed(this, 12_000) }
+        }
+    }
+
+    /** More than 8 rings rotate in pages of 8 every 12 seconds. */
     fun set(list: List<Ring>, message: String = "") {
-        rings.list = list
+        removeCallbacks(flip)
+        pages = list.chunked(8); page = 0
+        rings.list = pages.firstOrNull() ?: emptyList()
+        if (pages.size > 1) postDelayed(flip, 12_000)
         status.text = message
         status.visibility = if (message.isBlank()) View.GONE else View.VISIBLE
     }
@@ -334,5 +373,130 @@ class HourlyChart(ctx: Context, private val theme: Theme) : View(ctx) {
             tp.typeface = U.medium; tp.textSize = U.pxf(19); tp.color = theme.cardMuted
             c.drawText(if (i == 0) "Now" else hr.time.format(hourFmt), x(i), h - U.pxf(4), tp)
         }
+    }
+}
+
+
+/** Shared dark card shell: rounded body, accent strip along the bottom, blue label, focus outline. */
+open class CardShell(ctx: Context, label: String, protected val theme: Theme) : LinearLayout(ctx) {
+    protected val body = GradientDrawable().apply { cornerRadius = U.pxf(22); setColor(theme.card) }
+    init {
+        orientation = VERTICAL
+        setPadding(U.px(30), U.px(26), U.px(30), U.px(24))
+        val strip = GradientDrawable().apply { cornerRadius = U.pxf(22); setColor(theme.accent) }
+        background = LayerDrawable(arrayOf(strip, body)).apply { setLayerInset(1, 0, 0, 0, U.px(10)) }
+        val head = LinearLayout(ctx).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        head.addView(View(ctx).apply { setBackgroundColor(theme.accent) }, U.lp(U.px(6), U.px(28), 0, 0, U.px(12), 0))
+        head.addView(U.text(ctx, 24, theme.accent, U.bold, label.uppercase()).apply { letterSpacing = 0.12f })
+        addView(head)
+        isFocusable = true; isClickable = true
+        U.focusGrow(this, 1.02f) { has -> body.setStroke(if (has) U.px(4) else 0, if (has) theme.accent else Color.TRANSPARENT) }
+    }
+}
+
+/** Championship: drivers on the left, constructors on the right, each with a team color bar. */
+class StandingsCard(ctx: Context, theme: Theme) : CardShell(ctx, "Championship", theme) {
+    private val cols = LinearLayout(ctx).apply { orientation = HORIZONTAL }
+    private val drivers = LinearLayout(ctx).apply { orientation = VERTICAL }
+    private val teams = LinearLayout(ctx).apply { orientation = VERTICAL }
+    init {
+        cols.addView(drivers, LayoutParams(0, U.WRAP, 1.1f))
+        cols.addView(teams, LayoutParams(0, U.WRAP, 1f).apply { leftMargin = U.px(36) })
+        addView(cols, U.lp(U.MATCH, U.WRAP, 0, U.px(12), 0, 0))
+    }
+
+    private fun row(pos: Int, color: Int, name: String, sub: String, pts: String): View {
+        val r = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+        r.addView(U.text(context, 26, theme.cardText, U.bold, "$pos").apply { gravity = Gravity.END }, U.lp(U.px(34), U.WRAP))
+        r.addView(View(context).apply { background = GradientDrawable().apply { cornerRadius = U.pxf(3); setColor(color) } }, U.lp(U.px(8), U.px(30), U.px(14), 0, U.px(14), 0))
+        val nameCol = LinearLayout(context).apply { orientation = VERTICAL }
+        nameCol.addView(U.text(context, 24, theme.cardText, U.medium, name))
+        if (sub.isNotBlank()) nameCol.addView(U.text(context, 16, theme.cardMuted, U.regular, sub))
+        r.addView(nameCol, LayoutParams(0, U.WRAP, 1f))
+        r.addView(U.text(context, 22, theme.cardMuted, U.medium, pts), U.lp(U.WRAP, U.WRAP, U.px(10), 0, 0, 0))
+        return r
+    }
+
+    fun set(ds: List<Feeds.Standing>, ts: List<Feeds.TeamStanding>) {
+        drivers.removeAllViews(); teams.removeAllViews()
+        drivers.addView(U.text(context, 18, theme.cardMuted, U.bold, "DRIVERS").apply { letterSpacing = 0.1f }, U.lp(U.WRAP, U.WRAP, 0, 0, 0, U.px(6)))
+        teams.addView(U.text(context, 18, theme.cardMuted, U.bold, "CONSTRUCTORS").apply { letterSpacing = 0.1f }, U.lp(U.WRAP, U.WRAP, 0, 0, 0, U.px(6)))
+        if (ds.isEmpty()) drivers.addView(U.text(context, 22, theme.cardMuted, U.regular, "Standings loading…"))
+        ds.forEach { d -> drivers.addView(row(d.pos, Feeds.teamColor(d.teamId), d.name, d.team, d.points), U.lp(U.MATCH, U.WRAP, 0, U.px(5), 0, U.px(5))) }
+        ts.forEach { t -> teams.addView(row(t.pos, Feeds.teamColor(t.teamId), t.name, "", t.points), U.lp(U.MATCH, U.WRAP, 0, U.px(9), 0, U.px(9))) }
+    }
+}
+
+data class WeekItem(val start: java.time.ZonedDateTime, val text: String, val color: Int)
+
+/** Seven day strip: one column per day, up to four events each, colored by source. */
+class WeekCard(ctx: Context, theme: Theme) : CardShell(ctx, "Week ahead", theme) {
+    private val days = LinearLayout(ctx).apply { orientation = HORIZONTAL }
+    private val legend = LinearLayout(ctx).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+    init {
+        addView(days, LayoutParams(U.MATCH, 0, 1f).apply { topMargin = U.px(10) })
+        addView(legend, U.lp(U.WRAP, U.WRAP, 0, U.px(6), 0, 0))
+    }
+
+    fun set(items: List<WeekItem>, keys: List<Pair<String, Int>>) {
+        days.removeAllViews(); legend.removeAllViews()
+        val zone = java.time.ZoneId.of("America/Chicago"); val today = java.time.LocalDate.now(zone)
+        val tf = java.time.format.DateTimeFormatter.ofPattern("h:mm", java.util.Locale.US)
+        for (i in 0 until 7) {
+            val day = today.plusDays(i.toLong())
+            val col = LinearLayout(context).apply { orientation = VERTICAL; setPadding(U.px(8), 0, U.px(8), 0) }
+            val name = if (i == 0) "Today" else day.format(java.time.format.DateTimeFormatter.ofPattern("EEE d", java.util.Locale.US))
+            col.addView(U.text(context, 20, if (i == 0) theme.accent else theme.cardText, U.bold, name))
+            val list = items.filter { it.start.toLocalDate() == day }.sortedBy { it.start.toEpochSecond() }
+            list.take(4).forEach { it2 ->
+                val r = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+                r.addView(View(context).apply { background = GradientDrawable().apply { cornerRadius = U.pxf(2); setColor(it2.color) } }, U.lp(U.px(5), U.px(34), 0, 0, U.px(8), 0))
+                val t = LinearLayout(context).apply { orientation = VERTICAL }
+                t.addView(U.text(context, 15, theme.cardMuted, U.medium, it2.start.format(tf)))
+                t.addView(U.text(context, 17, theme.cardText, U.regular, it2.text))
+                r.addView(t)
+                col.addView(r, U.lp(U.MATCH, U.WRAP, 0, U.px(8), 0, 0))
+            }
+            if (list.size > 4) col.addView(U.text(context, 15, theme.cardMuted, U.regular, "+${list.size - 4} more"), U.lp(U.WRAP, U.WRAP, 0, U.px(6), 0, 0))
+            if (list.isEmpty()) col.addView(U.text(context, 16, theme.cardMuted, U.regular, "Free"), U.lp(U.WRAP, U.WRAP, 0, U.px(8), 0, 0))
+            days.addView(col, LayoutParams(0, U.MATCH, 1f))
+            if (i < 6) days.addView(View(context).apply { setBackgroundColor(Color.argb(30, 255, 255, 255)) }, LayoutParams(U.px(1), U.MATCH))
+        }
+        keys.forEach { (label, color) ->
+            legend.addView(View(context).apply { background = GradientDrawable().apply { cornerRadius = U.pxf(2); setColor(color) } }, U.lp(U.px(14), U.px(14), 0, 0, U.px(6), 0))
+            legend.addView(U.text(context, 15, theme.cardMuted, U.medium, label), U.lp(U.WRAP, U.WRAP, 0, 0, U.px(20), 0))
+        }
+    }
+}
+
+/** Today's tasks from Notion. */
+class TasksCard(ctx: Context, theme: Theme) : CardShell(ctx, "Today", theme) {
+    private val list = LinearLayout(ctx).apply { orientation = VERTICAL }
+    init { addView(list, U.lp(U.MATCH, U.WRAP, 0, U.px(12), 0, 0)) }
+
+    fun set(tasks: List<TaskItem>?, message: String = "") {
+        list.removeAllViews()
+        if (tasks == null || tasks.isEmpty()) {
+            list.addView(U.text(context, 32, theme.cardText, U.bold, if (tasks == null) "Link tasks" else "All clear"))
+            list.addView(U.text(context, 20, theme.cardMuted, U.regular, message.ifBlank { "Nothing due or scheduled today" }).apply { maxLines = 2 }, U.lp(U.MATCH, U.WRAP, 0, U.px(8), 0, 0))
+            return
+        }
+        val zone = java.time.ZoneId.of("America/Chicago"); val today = java.time.LocalDate.now(zone)
+        val tf = java.time.format.DateTimeFormatter.ofPattern("h:mm a", java.util.Locale.US)
+        tasks.take(5).forEach { t ->
+            val r = LinearLayout(context).apply { orientation = HORIZONTAL; gravity = Gravity.CENTER_VERTICAL }
+            val overdue = t.due != null && t.due.isBefore(today)
+            val dot = if (overdue) Color.parseColor("#FF4D4D") else if (t.priority == "High") theme.accent else theme.cardMuted
+            r.addView(View(context).apply { background = GradientDrawable().apply { shape = GradientDrawable.OVAL; setColor(dot) } }, U.lp(U.px(10), U.px(10), 0, 0, U.px(12), 0))
+            val col = LinearLayout(context).apply { orientation = VERTICAL }
+            col.addView(U.text(context, 21, theme.cardText, U.medium, t.title))
+            val when_ = when { overdue -> "Overdue since ${t.due!!.format(java.time.format.DateTimeFormatter.ofPattern("MMM d", java.util.Locale.US))}"
+                t.scheduled != null && t.scheduled.toLocalDate() == today && (t.scheduled.hour != 0 || t.scheduled.minute != 0) -> t.scheduled.format(tf)
+                t.due != null && t.due == today -> "Due today"; else -> "Today" }
+            col.addView(U.text(context, 16, if (overdue) Color.parseColor("#FF8A8A") else theme.cardMuted, U.regular, when_))
+            r.addView(col, LayoutParams(0, U.WRAP, 1f))
+            list.addView(r, U.lp(U.MATCH, U.WRAP, 0, U.px(6), 0, U.px(6)))
+        }
+        if (tasks.size > 5) list.addView(U.text(context, 16, theme.cardMuted, U.regular, "+${tasks.size - 5} more in Notion"))
     }
 }

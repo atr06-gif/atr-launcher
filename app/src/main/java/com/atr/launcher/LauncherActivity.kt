@@ -41,6 +41,8 @@ class LauncherActivity : Activity() {
     private val cards = LinkedHashMap<String, InfoCard>()
     private var ringsCard: RingsCard? = null
     private var weatherCard: WeatherCard? = null
+    private var weekCard: WeekCard? = null
+    private var tasksCard: TasksCard? = null
     private lateinit var rootFrame: FrameLayout
     private lateinit var weatherLine: TextView
     private var lockView: PinView? = null
@@ -53,6 +55,7 @@ class LauncherActivity : Activity() {
     private val tick = object : Runnable {
         override fun run() {
             updateClock()
+            if (Appearance.update()) { buildScreen(); App.main.postDelayed(this, 15_000); return }
             if (!Lock.isUnlocked && lockView == null) showLock()
             val now = System.currentTimeMillis()
             if (now - lastFeeds > 10 * 60_000) refreshCards()
@@ -69,6 +72,7 @@ class LauncherActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         U.init(this)
+        Appearance.update()
         buildScreen()
         registerReceiver(pkgReceiver, IntentFilter().apply {
             addAction(Intent.ACTION_PACKAGE_ADDED); addAction(Intent.ACTION_PACKAGE_REMOVED); addAction(Intent.ACTION_PACKAGE_CHANGED)
@@ -102,11 +106,42 @@ class LauncherActivity : Activity() {
     private fun showLock() {
         if (lockView != null) return
         val creating = !Lock.hasPin(this)
-        val v = PinView(this, th, creating) { hideLock(); refreshCards(force = true); focusFirstTile() }
+        val v = PinView(this, th, creating) { hideLock(); refreshCards(force = true); focusFirstTile(); maybeGreet() }
         lockView = v
         // Nothing behind the PIN pad can take focus while locked
         (content.parent as? ScrollView)?.descendantFocusability = android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
         rootFrame.addView(v, FrameLayout.LayoutParams(U.MATCH, U.MATCH))
+    }
+
+    /** First unlock of the day: greeting with the day's first class, weather, tasks and next exam. */
+    private fun maybeGreet() {
+        val prefs = getSharedPreferences("atr_ui", MODE_PRIVATE)
+        val today = java.time.LocalDate.now(java.time.ZoneId.of("America/Chicago")).toString()
+        if (prefs.getString("greeted", "") == today) return
+        prefs.edit().putString("greeted", today).apply()
+        lateinit var g: GreetingView
+        g = GreetingView(this, th) { rootFrame.removeView(g); focusFirstTile() }
+        rootFrame.addView(g, FrameLayout.LayoutParams(U.MATCH, U.MATCH))
+        g.requestFocus()
+        val feeds = Feeds(this)
+        App.bg({
+            val now = ZonedDateTime.now(java.time.ZoneId.of("America/Chicago"))
+            val events = CalendarFeed.upcoming(this, feeds, 150)
+            val firstClass = events.firstOrNull { it.start.toLocalDate() == now.toLocalDate() && it.end.isAfter(now) }
+            val exam = events.firstOrNull { it.title.contains("EXAM", true) && it.end.isAfter(now) }
+            val tasks = NotionFeed.todaysTasks(this)
+            listOf(
+                feeds.weather()?.let { w -> "${w.nowF}° and ${Feeds.describe(w.code).lowercase()}, high of ${w.hiF}°" + if (w.rainPct >= 50) ", rain likely" else "" } ?: "",
+                firstClass?.let { "${it.title.replace(" - Lecture", "")} at ${it.start.format(java.time.format.DateTimeFormatter.ofPattern("h:mm a", Locale.US))}" + if (it.location.isNotBlank()) " in ${it.location}" else "" } ?: "No more classes today",
+                tasks?.let { if (it.isEmpty()) "Nothing due today" else "${it.size} task${if (it.size == 1) "" else "s"} for today" } ?: "",
+                exam?.let { "${java.time.temporal.ChronoUnit.DAYS.between(now.toLocalDate(), it.start.toLocalDate())} days until ${it.title}" } ?: ""
+            )
+        }) { lines ->
+            g.addLine(lines[0], th.ink)
+            g.addLine(lines[1], th.ink)
+            g.addLine(lines[2], th.inkMuted)
+            g.addLine(lines[3], th.accent)
+        }
     }
 
     private fun hideLock() {
@@ -131,13 +166,15 @@ class LauncherActivity : Activity() {
 
         content.addView(header(), U.lp(U.MATCH, U.px(178)))
 
-        cards.clear(); ringsCard = null; weatherCard = null
+        cards.clear(); ringsCard = null; weatherCard = null; weekCard = null; tasksCard = null
         Config.cardRows.forEachIndexed { r, keys ->
             val cardRow = LinearLayout(this).apply { orientation = LinearLayout.HORIZONTAL; clipChildren = false }
-            val height = if (keys.any { it == "atr" || it == "weather" }) 330 else 300
+            val height = when { keys.any { it == "week" || it == "tasks" } -> 340; keys.any { it == "atr" || it == "weather" } -> 330; else -> 300 }
             keys.forEachIndexed { i, key ->
-                val lp = LinearLayout.LayoutParams(0, U.px(height), 1f).apply { if (i > 0) leftMargin = U.px(28) }
+                val lp = LinearLayout.LayoutParams(0, U.px(height), if (key == "week") 2.2f else 1f).apply { if (i > 0) leftMargin = U.px(28) }
                 when (key) {
+                    "week" -> { val wk = WeekCard(this, th); weekCard = wk; cardRow.addView(wk, lp) }
+                    "tasks" -> { val tc = TasksCard(this, th); tasksCard = tc; cardRow.addView(tc, lp) }
                     "atr" -> { val rc = RingsCard(this, th); rc.setOnClickListener { refreshCards(force = true) }; ringsCard = rc; cardRow.addView(rc, lp) }
                     "weather" -> { val wc = WeatherCard(this, Config.weatherLabel, th); weatherCard = wc; cardRow.addView(wc, lp) }
                     else -> {
@@ -245,19 +282,17 @@ class LauncherActivity : Activity() {
 
     private fun racingTiles(row: RowView) {
         val feeds = Feeds(this)
-        App.bg({ feeds.weekend() to feeds.driverStandings(5) }) { (sessions, standings) ->
+        val standings = StandingsCard(this, th)
+        standings.setOnClickListener { openRace() }
+        row.add(standings, w = 1000, h = 400, grow = 1.02f)
+        App.bg({ Triple(feeds.weekend(), feeds.driverStandings(5), feeds.constructorStandings(5)) }) { (sessions, ds, ts) ->
+            standings.set(ds, ts)
             val now = ZonedDateTime.now(java.time.ZoneId.of("America/Chicago"))
             sessions.forEach { s ->
                 val done = s.start.isBefore(now.minusHours(2))
                 val t = TileView(this, "${s.event} · ${s.start.format(short)}${if (done) " · done" else " · in " + countdown(s.start)}", null, null, s.session,
                     sub = if (done) "Done" else s.start.format(short))
                     .apply { theme = this@LauncherActivity.th; glyphSize = if (s.session.length > 6) 38f else 56f; alpha = if (done) 0.55f else 1f }
-                t.setOnClickListener { openRace() }
-                row.add(t)
-            }
-            standings.forEach { d ->
-                val t = TileView(this, "P${d.pos} ${d.name} · ${d.team} · ${d.points} pts", null, null, "P${d.pos}", sub = "${d.code} · ${d.points} pts")
-                    .apply { theme = this@LauncherActivity.th; glyphSize = 56f }
                 t.setOnClickListener { openRace() }
                 row.add(t)
             }
@@ -288,8 +323,10 @@ class LauncherActivity : Activity() {
 
     private fun focusFirstTile() {
         rowsBox.post {
-            val first = (rowsBox.getChildAt(0) as? RowView)?.strip?.getChildAt(0)
+            val firstCard = (content.getChildAt(1) as? LinearLayout)?.getChildAt(0)
+            val first = firstCard?.takeIf { it.isFocusable } ?: (rowsBox.getChildAt(0) as? RowView)?.strip?.getChildAt(0)
             first?.requestFocus()
+            (content.parent as? ScrollView)?.scrollTo(0, 0)
         }
     }
 
@@ -340,7 +377,7 @@ class LauncherActivity : Activity() {
             }
         }
         ringsCard?.let { rc ->
-            App.bg({ NotionFeed.rings(this) to Secrets.has(this, Secrets.NOTION_TOKEN) }) { (rings, linked) ->
+            App.bg({ NotionFeed.visibleRings(this) to Secrets.has(this, Secrets.NOTION_TOKEN) }) { (rings, linked) ->
                 when {
                     !linked -> rc.set(emptyList(), "Link Notion: run 7 - Finish setup.bat")
                     rings.isEmpty() -> rc.set(emptyList(), "Couldn't reach Notion. Showing nothing yet.")
@@ -357,6 +394,28 @@ class LauncherActivity : Activity() {
                 wc.set(if (w.nowF == -999) null else w, hours)
             }
         }
+        weekCard?.let { wk ->
+            App.bg({ Triple(CalendarFeed.upcoming(this, feeds, 8), CalendarFeed.robotics(this, feeds, 8), feeds.aggieGames(8)) }) { (classes, robo, games) ->
+                val blue = th.accent; val teal = android.graphics.Color.parseColor("#2DD4BF"); val maroon = android.graphics.Color.parseColor("#C0394F")
+                val items = classes.map { WeekItem(it.start, it.title.replace(" - Lecture", ""), blue) } +
+                    robo.map { WeekItem(it.start, it.title, teal) } +
+                    games.map { WeekItem(it.start, (if (it.home) "vs " else "at ") + it.opponent, maroon) }
+                val keys = mutableListOf("Classes" to blue)
+                if (Secrets.has(this, Secrets.ROBOTICS_ICS)) keys += "Robotics" to teal
+                keys += "Aggie football" to maroon
+                wk.set(items, keys)
+            }
+        }
+        tasksCard?.let { tc ->
+            App.bg({ NotionFeed.todaysTasks(this) ?: listOf(TaskItem("__unlinked__", null, null, "")) }) { tasks ->
+                if (tasks.firstOrNull()?.title == "__unlinked__") tc.set(null, "Connect ATR TV to your Tasks database, then run 7 - Finish setup")
+                else tc.set(tasks)
+            }
+        }
+        App.bg({ feeds.sun() ?: (ZonedDateTime.now() to ZonedDateTime.now()) }) { (rise, set) ->
+            if (rise != set) { Appearance.sunrise = rise; Appearance.sunset = set }
+            if (Appearance.update()) buildScreen()
+        }
         cards["exam"]?.let { card ->
             App.bg({ CalendarFeed.upcoming(this, feeds, 150) to Secrets.has(this, Secrets.CALENDAR_ICS) }) { (events, linked) ->
                 val now = ZonedDateTime.now(java.time.ZoneId.of("America/Chicago"))
@@ -369,6 +428,11 @@ class LauncherActivity : Activity() {
                         val days = java.time.temporal.ChronoUnit.DAYS.between(now.toLocalDate(), next.start.toLocalDate())
                         val big = when { next.start.isBefore(now) -> "NOW"; days >= 2 -> "$days days"; days == 1L -> "Tomorrow"; else -> countdown(next.start) }
                         val then = exams.getOrNull(1)
+                        // Readiness ring: the Ring Inputs row whose name starts the exam title, like "MATH 251"
+                        App.bg({ NotionFeed.rings(this) }) { rings ->
+                            val ring = rings.firstOrNull { r -> next.title.startsWith(r.metric, ignoreCase = true) || next.title.contains(r.metric, ignoreCase = true) }
+                            if (ring != null && ring.goal > 0) card.setBadge((ring.current / ring.goal).toFloat(), ring.color, "READY") else card.setBadge(null)
+                        }
                         card.set(big, next.title, next.start.format(long) + if (next.location.isNotBlank()) " · ${next.location}" else "",
                             then?.let { "Then: ${it.title} · ${java.time.temporal.ChronoUnit.DAYS.between(now.toLocalDate(), it.start.toLocalDate())} days" } ?: "")
                     }

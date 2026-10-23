@@ -33,4 +33,7 @@ object Secrets {
     const val NOTION_DATA_SOURCE = "notionDataSourceId"
     const val NOTION_DATABASE = "notionDatabaseId"
     const val CALENDAR_ICS = "calendarIcalUrl"
+    const val ROBOTICS_ICS = "roboticsCalendarIcalUrl"
+    const val NOTION_TASKS_DATA_SOURCE = "notionTasksDataSourceId"
+    const val NOTION_TASKS_DATABASE = "notionTasksDatabaseId"
 }
